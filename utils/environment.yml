@@ -1,0 +1,11 @@
+name: {{ env_name }}
+
+channels:
+  - conda-forge
+
+dependencies:
+  # conda-core{{ conda-core }}
+  # conda-spec{{ conda-spec }}
+  - pip:
+    # pip-core{{ pip-core }}
+    # pip-spec{{ pip-spec }}

@@ -1,0 +1,13 @@
+name: {{ env_name }}
+
+channels:
+  - conda-forge
+
+dependencies:
+  # conda-core{{ conda-core }}
+  # conda-spec{{ conda-spec }}
+  # conda_tf-nogpu{{ conda_tf-nogpu }}
+  - pip:
+    # pip-core{{ pip-core }}
+    # pip-spec{{ pip-spec }}
+    # pip_tf-nogpu{{ pip_tf-nogpu }}
