@@ -14,7 +14,7 @@ data_path = Path("D:\local_Mayrhofer\data")
 img_name = "Ins1e_wt_1.7nm_00"
 
 # Parameters
-df = 4
+df = 16
 
 #%% Function(s) ---------------------------------------------------------------
 
