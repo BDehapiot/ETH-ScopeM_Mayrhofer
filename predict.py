@@ -1,45 +1,65 @@
 #%% Imports -------------------------------------------------------------------
 
-import time
 import napari
 import numpy as np
-from skimage import io
 from pathlib import Path
+
+# functions
+from functions import load_images, get_shift, stich
 
 # bdtools
 from bdtools.models.unet import UNet
 
 #%% Inputs --------------------------------------------------------------------
 
-# Path
-# data_path = Path(r"\\scopem-idadata.ethz.ch\BDehapiot\remote_Mayrhofer\data")
-data_path = Path("D:\local_Mayrhofer\data")
-img_name = "Ins1e_wt_1.7nm_00"
-
 # Parameters
-suffix = "vesicles"
-load_name = f"model-{suffix}_1024_normal_256-31_1"
+df = 16
+suffixes = ["cells", "nuclei", "vesicles"]
+
+# Paths
+img_name = "Ins1e_wt_1.7nm_00"
+data_path = Path(f"D:\local_Mayrhofer\data\{img_name}")
 
 #%% Function(s) ---------------------------------------------------------------
-
-def predict(path):
-    img = io.imread(path)
-    prd = (unet.predict(img, verbose=1) * 255).astype("uint8")
-    save_path = data_path / (path.stem + f"_prd-{suffix}.tif")
-    io.imsave(save_path, prd, check_contrast=False)
 
 #%% Execute -------------------------------------------------------------------
 
 if __name__ == "__main__":
+    
+    # Setup prd directory
+    if df == 1:
+        level_path = data_path
+    else:
+        level_path = data_path / f"level-{df}"
+    prd_path = level_path / "prds"
+    if prd_path.exists():
+        for item in prd_path.iterdir():
+            if item.is_file() or item.is_symlink():
+                item.unlink()
+    else:
+        prd_path.mkdir(parents=True, exist_ok=True)
+    
+    # Get shift
+    mtds = get_shift(data_path, df=16)
+        
+#%% Pre_stiching predictions --------------------------------------------------
 
-    # load images
-    unet = UNet(load_name=load_name)
-    img_paths = list((data_path / img_name).glob("*.tif"))   
-    for i, img_path in enumerate(img_paths):
-        if i < 50:
-            predict(img_path)
+    # Load images
+    imgs, _ = load_images(data_path, df=df)
+        
+    # Predict
+    suffix = "nuclei"
+    unet = UNet(load_name=list(Path.cwd().glob(f"model-{suffix}*"))[0])
+    prds = unet.predict(np.stack(imgs), verbose=1)
+    prds = (prds * 255).astype("uint8")
             
-    # # Display
-    # vwr = napari.Viewer()
-    # vwr.add_image(img, gamma=2)
-    # vwr.add_image(prd, blending="additive", colormap="magma", opacity=0.33)
+    # Stich
+    imgs_s = stich(imgs, mtds)
+    prds_s = stich(prds, mtds)
+    
+    # Display
+    vwr = napari.Viewer()
+    vwr.add_image(
+        imgs_s, gamma=2, opacity=0.5)
+    vwr.add_image(
+        prds_s, blending="additive", colormap="bop orange", opacity=0.33)    

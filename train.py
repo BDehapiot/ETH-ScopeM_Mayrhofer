@@ -1,7 +1,5 @@
 #%% Imports -------------------------------------------------------------------
 
-import time
-import napari
 import numpy as np
 from skimage import io
 from pathlib import Path
@@ -15,11 +13,10 @@ from bdtools.models.annotate import Annotate
 # Procedure
 annotate = 0
 train = 1
-predict = 0
 
 # Parameters
 df = 16
-suffix = "cells"
+suffix = "vesicles"
 
 # Paths
 img_name = "Ins1e_wt_1.7nm_00"

@@ -1,0 +1,9 @@
+{
+    "iterations": 2000,
+    "invert_p": 0.0,
+    "gamma_p": 0.5,
+    "gblur_p": 0.5,
+    "noise_p": 0.5,
+    "flip_p": 0.5,
+    "distord_p": 0.5
+}
