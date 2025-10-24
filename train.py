@@ -5,6 +5,7 @@ from skimage import io
 from pathlib import Path
 
 # bdtools
+from bdtools.norm import norm_pct
 from bdtools.models.unet import UNet
 from bdtools.models.annotate import Annotate
 
@@ -16,7 +17,7 @@ train = 1
 
 # Parameters
 df = 16
-suffix = "vesicles"
+mask_type = "vesicles"
 
 # Paths
 img_name = "Ins1e_wt_1.7nm_00"
@@ -37,15 +38,15 @@ load_name = ""
 # preprocess
 patch_size = 250
 patch_overlap = 125
-img_norm = "image"
+img_norm = "none"
 msk_type = "normal"
 
 # augment
 iterations = 2000
 invert_p = 0.0
-gamma_p = 0.5
-gblur_p = 0.5
-noise_p = 0.5 
+gamma_p = 0
+gblur_p = 0
+noise_p = 0 
 flip_p = 0.5 
 distord_p = 0.5
 
@@ -70,13 +71,17 @@ if __name__ == "__main__":
         # Load data
         imgs, msks = [], []
         for path in list(train_path.rglob("*.tif")):
-            if f"_mask_{suffix}" in path.name:
-                if Path(str(path).replace(f"_mask_{suffix}", "")).exists():
+            if f"_mask_{mask_type}" in path.name:
+                if Path(str(path).replace(f"_mask_{mask_type}", "")).exists():
                     msks.append(io.imread(path))   
-                    imgs.append(io.imread(str(path).replace(f"_mask_{suffix}", "")))
+                    imgs.append(io.imread(str(path).replace(f"_mask_{mask_type}", "")))
         imgs = np.stack(imgs)
         msks = np.stack(msks)
-        
+                        
+        # Manual normalization
+        imgs = imgs.astype("float32")
+        imgs = norm_pct(imgs, pct_low=1, pct_high=99, mask=imgs > 0)
+
         unet = UNet(
             save_name="",
             load_name=load_name,
