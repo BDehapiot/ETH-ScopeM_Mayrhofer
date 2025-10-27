@@ -1,6 +1,7 @@
 #%% Imports -------------------------------------------------------------------
 
 import time
+import shutil
 from skimage import io
 from pathlib import Path
 from joblib import Parallel, delayed 
@@ -16,6 +17,18 @@ from numpy.fft import fft2, ifft2, fftshift
 # skimage
 from skimage.filters import sobel
 from skimage.transform import downscale_local_mean
+
+#%% Function(s) ---------------------------------------------------------------
+
+def clear_directory(dir_path):
+    if dir_path.exists():
+        for item in dir_path.iterdir():
+            if item.is_file() or item.is_symlink():
+                item.unlink()
+            elif item.is_dir():
+                shutil.rmtree(item)
+    else:
+        return
 
 #%% Function : downscale_images() ---------------------------------------------
 
@@ -36,11 +49,14 @@ def downscale_images(data_path, df=16):
         io.imsave(save_path, img, check_contrast=False)
         
     # Execute -----------------------------------------------------------------
-        
+    
     # Setup level directory
     level_path = data_path / f"level-{df}"
     if not level_path.exists():
         level_path.mkdir(parents=True, exist_ok=True)
+
+    t0 = time.time()
+    print("downscale_images() :", end=" ", flush=True)
     
     # Load & downscale images
     img_paths = list(data_path.glob("*.tif"))
@@ -48,17 +64,22 @@ def downscale_images(data_path, df=16):
         delayed(_downscale_images)(img_path, level_path, df=df)
             for img_path in img_paths
             )
+    
+    t1 = time.time()
+    print(f"{t1 - t0:.3f}s")
 
 #%% Function : load_images() --------------------------------------------------
 
 def load_images(data_path, df=16, suffix="", return_metadata=False):
-    
-    # Initialize
+
     if df == 1:
         level_path = data_path
     else:
         level_path = data_path / f"level-{df}"
     img_paths = list(level_path.glob(f"*level-{df}{suffix}.tif"))
+    
+    t0 = time.time()
+    print("load_images() :", end=" ", flush=True)
     
     imgs, mtds = [], []
     for i, img_path in enumerate(img_paths):
@@ -83,6 +104,9 @@ def load_images(data_path, df=16, suffix="", return_metadata=False):
             "y0"  : y0,  "y1"  : y1,
             "x0"  : x0,  "x1"  : x1,  
             })
+        
+    t1 = time.time()
+    print(f"{t1 - t0:.3f}s")
             
     return imgs, mtds
         
@@ -92,15 +116,15 @@ def get_shift(imgs, mtds):
     
     # Nested function(s) ------------------------------------------------------
     
-    def preprocess_image(raw):
-        raw = sobel(raw)
-        return raw
+    def preprocess_image(img):
+        prp = sobel(img)
+        return prp
     
-    def _get_shift(raw0, raw1):
+    def _get_shift(img_0, img_1):
         
         # Cross power spectrum
-        f0 = fft2(raw0)
-        f1 = fft2(raw1)
+        f0 = fft2(img_0)
+        f1 = fft2(img_1)
         cross_power = f0 * f1.conj()
         cross_power /= np.abs(cross_power)
         
@@ -120,7 +144,9 @@ def get_shift(imgs, mtds):
     
     # Execute -----------------------------------------------------------------
     
-            
+    t0 = time.time()
+    print("get_shift() :", end=" ", flush=True)
+    
     # Get mosaic shape
     nR = np.max([m["row"] for m in mtds])
     nC = np.max([m["col"] for m in mtds])
@@ -165,6 +191,9 @@ def get_shift(imgs, mtds):
                 else:
                     mtds[idx]["tshift"] = (np.nan,) * 3
     
+    t1 = time.time()
+    print(f"{t1 - t0:.3f}s")
+    
     return mtds
 
 #%% Function : stich() --------------------------------------------------------
@@ -181,6 +210,9 @@ def stich(imgs, mtds):
     
     # Execute -----------------------------------------------------------------
     
+    t0 = time.time()
+    print("stich() :", end=" ", flush=True)
+    
     # Get mosaic shape
     nY, nX = imgs[0].shape
     nR = np.max([m["row"] for m in mtds])
@@ -193,7 +225,7 @@ def stich(imgs, mtds):
     tdy_mode = get_mode(tdys)
     
     # Stich data
-    stiched = np.zeros((nR * nY, nC * nX), dtype="float32") 
+    img_s = np.zeros((nR * nY, nC * nX), dtype="float32") 
     for i, mtd in enumerate(mtds):
         row, col = mtd["row"], mtd["col"]
         tdy = row * tdy_mode
@@ -202,13 +234,16 @@ def stich(imgs, mtds):
         y1r = mtd["y1r"] = mtd["y1"] + tdy 
         x0r = mtd["x0r"] = mtd["x0"] + ldx
         x1r = mtd["x1r"] = mtd["x1"] + ldx
-        stiched[y0r:y1r, x0r:x1r] = imgs[i]    
+        img_s[y0r:y1r, x0r:x1r] = imgs[i]    
     
-    return stiched
+    t1 = time.time()
+    print(f"{t1 - t0:.3f}s")
+    
+    return img_s
 
-#%% Predict -------------------------------------------------------------------
+#%% Function : predict() ------------------------------------------------------
 
-def predict(img, model_types=["cells", "nuclei", "vesicles"]):
+def predict_batch(img, model_types=["cells", "nuclei", "vesicles"]):
     prds = {key:[] for key in model_types}
     for model_type in model_types:
         print(f"predict() - {model_type}")
@@ -217,6 +252,12 @@ def predict(img, model_types=["cells", "nuclei", "vesicles"]):
         prd = unet.predict(img, verbose=1)
         prds[model_type] = (prd * 255).astype("uint8")
     return prds
+
+def predict(img, model_type="cells"):
+    load_name = list(Path.cwd().glob(f"model-{model_type}*"))[0]
+    unet = UNet(load_name=load_name)
+    prd = unet.predict(img, verbose=1)
+    return (prd * 255).astype("uint8")
 
 #%% Execute -------------------------------------------------------------------
 
@@ -227,51 +268,27 @@ if __name__ == "__main__":
     model_types = ["cells", "nuclei", "vesicles"]
     
     # Paths
-    raw_name = "Ins1e_wt_1.7nm_00"
-    data_path = Path(f"D:\local_Mayrhofer\data\{raw_name}")
+    img_name = "Ins1e_wt_1.7nm_00"
+    data_path = Path(f"D:\local_Mayrhofer\data\{img_name}")
+    
+    # Log
+    log_str = f"{img_name} - df{df}"
+    print(log_str); print('-' * len(log_str))
             
     # downscale_images() ------------------------------------------------------
     
-    # t0 = time.time()
-    # print("downscale_images() :", end=" ", flush=True)
-    
     # downscale_images(data_path, df=df)
-    
-    # t1 = time.time()
-    # print(f"{t1 - t0:.3f}s")
-    
+
     # load_images() -----------------------------------------------------------
-    
-    t0 = time.time()
-    print("load_images() :", end=" ", flush=True)
     
     imgs, mtds = load_images(
         data_path, df=df, suffix="", return_metadata=True)
-    
-    t1 = time.time()
-    print(f"{t1 - t0:.3f}s")
-    
+        
     # get_shifts() ------------------------------------------------------------
     
-    t0 = time.time()
-    print("get_shifts() :", end=" ", flush=True)
-    
     mtds = get_shift(imgs, mtds)
-    
-    t1 = time.time()
-    print(f"{t1 - t0:.3f}s")
-    
-    # stich() ------------------------------------------------------------
-    
-    t0 = time.time()
-    print("stich() :", end=" ", flush=True)
-    
-    imgs_s = stich(imgs, mtds)
-    
-    t1 = time.time()
-    print(f"{t1 - t0:.3f}s")
-    
-    # predict() ------------------------------------------------------------
+        
+    # predict() ---------------------------------------------------------------
     
     # Manual normalization
     imgs = np.stack(imgs)
@@ -282,8 +299,10 @@ if __name__ == "__main__":
     imgs_s = stich(imgs, mtds)
     
     # Predict
-    prds = predict(imgs_s, model_types=model_types)
-    
+    prd_c = predict(imgs_s, model_type="cells")
+    prd_n = predict(imgs_s, model_type="nuclei")
+    prd_v = predict(imgs_s, model_type="vesicles")
+        
     # -------------------------------------------------------------------------
     
     # Display
@@ -296,8 +315,8 @@ if __name__ == "__main__":
     import napari
     vwr = napari.Viewer()
     vwr.add_image(imgs_s, opacity=0.5)
-    for model_type in model_types:
+    for i, prd in enumerate([prd_c, prd_n, prd_v]):
         vwr.add_image(
-            prds[model_type], name=model_type, 
-            blending="additive", **prd_params[model_type]
+            prd, name=model_types[i], 
+            blending="additive", **prd_params[model_types[i]]
             ) 
