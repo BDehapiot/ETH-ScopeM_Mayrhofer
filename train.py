@@ -4,6 +4,9 @@ import numpy as np
 from skimage import io
 from pathlib import Path
 
+# functions
+from functions import custom_normalization
+
 # bdtools
 from bdtools.norm import norm_pct
 from bdtools.models.unet import UNet
@@ -78,9 +81,8 @@ if __name__ == "__main__":
         imgs = np.stack(imgs)
         msks = np.stack(msks)
                         
-        # Manual normalization
-        imgs = imgs.astype("float32")
-        imgs = norm_pct(imgs, pct_low=1, pct_high=99, mask=imgs > 0)
+        # Custom normalization
+        imgs = custom_normalization(imgs)
 
         unet = UNet(
             save_name="",

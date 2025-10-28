@@ -17,6 +17,7 @@ from numpy.fft import fft2, ifft2, fftshift
 # skimage
 from skimage.filters import sobel
 from skimage.transform import downscale_local_mean
+from skimage.morphology import remove_small_objects, remove_small_holes
 
 #%% Function(s) ---------------------------------------------------------------
 
@@ -29,6 +30,12 @@ def clear_directory(dir_path):
                 shutil.rmtree(item)
     else:
         return
+    
+def custom_normalization(imgs):
+    imgs = np.stack(imgs)
+    imgs = imgs.astype("float32")
+    imgs = norm_pct(imgs, pct_low=1, pct_high=99, mask=imgs > 0)
+    return imgs
 
 #%% Function : downscale_images() ---------------------------------------------
 
@@ -198,7 +205,7 @@ def get_shift(imgs, mtds):
 
 #%% Function : stich() --------------------------------------------------------
 
-def stich(imgs, mtds):
+def stich(imgs, mtds, scaling_coeff=1):
     
     # Nested function(s) ------------------------------------------------------
     
@@ -221,37 +228,27 @@ def stich(imgs, mtds):
     # Get modal shifts 
     ldxs =  np.array([m["lshift"][1] for m in mtds])
     tdys =  np.array([m["tshift"][0] for m in mtds])
-    ldx_mode = get_mode(ldxs)
-    tdy_mode = get_mode(tdys)
+    ldx_mode = get_mode(ldxs) * scaling_coeff
+    tdy_mode = get_mode(tdys) * scaling_coeff
     
     # Stich data
-    img_s = np.zeros((nR * nY, nC * nX), dtype="float32") 
+    imgs_s = np.zeros((nR * nY, nC * nX), dtype="float32") 
     for i, mtd in enumerate(mtds):
         row, col = mtd["row"], mtd["col"]
         tdy = row * tdy_mode
         ldx = col * ldx_mode
-        y0r = mtd["y0r"] = mtd["y0"] + tdy 
-        y1r = mtd["y1r"] = mtd["y1"] + tdy 
-        x0r = mtd["x0r"] = mtd["x0"] + ldx
-        x1r = mtd["x1r"] = mtd["x1"] + ldx
-        img_s[y0r:y1r, x0r:x1r] = imgs[i]    
+        y0r = mtd["y0"] * scaling_coeff + tdy 
+        y1r = mtd["y1"] * scaling_coeff + tdy 
+        x0r = mtd["x0"] * scaling_coeff + ldx
+        x1r = mtd["x1"] * scaling_coeff + ldx
+        imgs_s[y0r:y1r, x0r:x1r] = imgs[i]    
     
     t1 = time.time()
     print(f"{t1 - t0:.3f}s")
     
-    return img_s
+    return imgs_s
 
 #%% Function : predict() ------------------------------------------------------
-
-def predict_batch(img, model_types=["cells", "nuclei", "vesicles"]):
-    prds = {key:[] for key in model_types}
-    for model_type in model_types:
-        print(f"predict() - {model_type}")
-        load_name = list(Path.cwd().glob(f"model-{model_type}*"))[0]
-        unet = UNet(load_name=load_name)
-        prd = unet.predict(img, verbose=1)
-        prds[model_type] = (prd * 255).astype("uint8")
-    return prds
 
 def predict(img, model_type="cells"):
     load_name = list(Path.cwd().glob(f"model-{model_type}*"))[0]
@@ -259,12 +256,20 @@ def predict(img, model_type="cells"):
     prd = unet.predict(img, verbose=1)
     return (prd * 255).astype("uint8")
 
+#%% Function : get_mask() -----------------------------------------------------
+
+def get_mask(prd, thresh, min_size_o, min_size_h):
+    msk = prd > thresh * 255
+    msk = remove_small_objects(msk, min_size=min_size_o)
+    msk = remove_small_holes(msk, area_threshold=min_size_h)
+    return (msk * 255).astype("uint8")
+
 #%% Execute -------------------------------------------------------------------
 
 if __name__ == "__main__":
     
     # Parameters
-    df = 16
+    df0, df1 = 16, 8
     model_types = ["cells", "nuclei", "vesicles"]
     
     # Paths
@@ -272,51 +277,58 @@ if __name__ == "__main__":
     data_path = Path(f"D:\local_Mayrhofer\data\{img_name}")
     
     # Log
-    log_str = f"{img_name} - df{df}"
+    log_str = f"{img_name} - df{df0}"
     print(log_str); print('-' * len(log_str))
             
     # downscale_images() ------------------------------------------------------
     
-    # downscale_images(data_path, df=df)
+    # downscale_images(data_path, df=df0)
+    # downscale_images(data_path, df=df1)
 
     # load_images() -----------------------------------------------------------
     
-    imgs, mtds = load_images(
-        data_path, df=df, suffix="", return_metadata=True)
+    imgs0, mtds = load_images(
+        data_path, df=df0, suffix="", return_metadata=True)
+    imgs1, _ = load_images(
+        data_path, df=df1, suffix="", return_metadata=True)
         
     # get_shifts() ------------------------------------------------------------
     
-    mtds = get_shift(imgs, mtds)
+    mtds = get_shift(imgs0, mtds)
         
-    # predict() ---------------------------------------------------------------
+    # stich() -----------------------------------------------------------------
     
-    # Manual normalization
-    imgs = np.stack(imgs)
-    imgs = imgs.astype("float32")
-    imgs = norm_pct(imgs, pct_low=1, pct_high=99, mask=imgs > 0)
+    # Custom normalization
+    imgs0 = custom_normalization(imgs0)
+    imgs1 = custom_normalization(imgs1)
     
     # Stich 
-    imgs_s = stich(imgs, mtds)
-    
-    # Predict
-    prd_c = predict(imgs_s, model_type="cells")
-    prd_n = predict(imgs_s, model_type="nuclei")
-    prd_v = predict(imgs_s, model_type="vesicles")
-        
-    # -------------------------------------------------------------------------
-    
-    # Display
-    prd_params = {
-        "cells"    : {"colormap" : "red"     , "opacity" : 0.1},
-        "nuclei"   : {"colormap" : "bop blue", "opacity" : 0.2},
-        "vesicles" : {"colormap" : "yellow"  , "opacity" : 1.0},
-        }
+    imgs0_s = stich(imgs0, mtds)
+    imgs1_s = stich(imgs1, mtds, scaling_coeff=2)
     
     import napari
     vwr = napari.Viewer()
-    vwr.add_image(imgs_s, opacity=0.5)
-    for i, prd in enumerate([prd_c, prd_n, prd_v]):
-        vwr.add_image(
-            prd, name=model_types[i], 
-            blending="additive", **prd_params[model_types[i]]
-            ) 
+    vwr.add_image(imgs1_s, opacity=0.5)
+    
+    # predict() ---------------------------------------------------------------
+    
+    # prd_c = predict(imgs0_s, model_type="cells")
+    # prd_n = predict(imgs0_s, model_type="nuclei")
+    # prd_v = predict(imgs0_s, model_type="vesicles")
+        
+    # display -----------------------------------------------------------------
+
+    # prd_params = {
+    #     "cells"    : {"colormap" : "red"     , "opacity" : 0.1},
+    #     "nuclei"   : {"colormap" : "bop blue", "opacity" : 0.2},
+    #     "vesicles" : {"colormap" : "yellow"  , "opacity" : 1.0},
+    #     }
+    
+    # import napari
+    # vwr = napari.Viewer()
+    # vwr.add_image(imgs0_s, opacity=0.5)
+    # for i, prd in enumerate([prd_c, prd_n, prd_v]):
+    #     vwr.add_image(
+    #         prd, name=model_types[i], 
+    #         blending="additive", **prd_params[model_types[i]]
+    #         ) 
