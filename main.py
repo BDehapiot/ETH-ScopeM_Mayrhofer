@@ -261,6 +261,7 @@ class Annotate:
             "mskb" : parameters["labels"][3],
             }
         self.mskb = np.zeros_like(self.mskc)
+        self.lblb = self.mskc.copy()
                 
 #%% Class(Annotate) : function(s) ---------------------------------------------
                                
@@ -280,7 +281,6 @@ class Annotate:
     def next_brush_size(self): 
         self.vwr.layers[self.active].brush_size += 1
         
-            
     def set_active(self):
         self.vwr.layers.selection.active = self.vwr.layers[self.active]
     
@@ -411,6 +411,13 @@ class Annotate:
                 "blending" : "additive",
                 },
             
+            "lblb" : {
+                "name"     : "mskb",
+                "visible"  : 1,
+                "opacity"  : 0.8,
+                "blending" : "additive",
+                },
+            
             }
         
         self.vwr.add_image(self.imgs , **parameters["imgs"])  
@@ -418,6 +425,7 @@ class Annotate:
         self.vwr.add_labels((self.mskn // 255 ) * 2, **parameters["mskn"])
         self.vwr.add_labels((self.mskv // 255 ) * 6, **parameters["mskv"])
         self.vwr.add_labels(self.mskb, **parameters["mskb"])
+        self.vwr.add_labels(self.lblb, **parameters["lblb"])
         self.set_active()
         
 #%% Execute -------------------------------------------------------------------
