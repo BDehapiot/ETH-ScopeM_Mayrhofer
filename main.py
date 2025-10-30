@@ -2,7 +2,6 @@
 
 import time
 import pickle
-import napari
 import numpy as np
 from skimage import io
 from pathlib import Path
@@ -11,8 +10,16 @@ from pathlib import Path
 from functions import (
     clear_directory,
     downscale_images, load_images, custom_normalization, 
-    get_shift, stich, predict, get_mask,
+    get_shift, stich, predict, get_mask, sync_masks
     )
+
+# skimage
+from skimage.measure import label
+from skimage.morphology import skeletonize
+
+# napari
+import napari
+from napari.layers.labels.labels import Labels
 
 # Qt
 from qtpy.QtGui import QFont
@@ -99,7 +106,7 @@ class Main:
         for attr, (filename, loader) in file_map.items():
             path = self.outputs_path / filename
             if path.is_file():
-                setattr(self, attr, loader(path))
+                setattr(self, attr, loader(path))        
                 
 #%% Class(Main) : downscale() -------------------------------------------------
 
@@ -183,14 +190,21 @@ class Main:
         if not msk_path.exists() or self.procedure["process"] == 2:
             log_str = f"process() - {self.img_name} - df{self.df}"
             print(log_str); print('-' * len(log_str))
+            
             t0 = time.time()
             print("get_mask() :", end=" ", flush=True)
+            
             mskc = get_mask(self.prdc, *self.parameters["mask_parameters"][0])
             mskn = get_mask(self.prdn, *self.parameters["mask_parameters"][1])
             mskv = get_mask(self.prdv, *self.parameters["mask_parameters"][2])
-            mskn[mskc == 0  ] = 0
-            mskv[mskc == 0  ] = 0
-            mskv[mskn == 255] = 0
+            sync_masks(mskc, mskn, mskv)
+            
+            t1 = time.time()
+            print(f"{t1 - t0:.3f}s")
+            
+            # Initialize labels & boundaries mask
+            mskb = np.zeros_like(mskc)
+            lbls = label(mskc).astype("uint8")
 
             # Save
             io.imsave(
@@ -199,9 +213,11 @@ class Main:
                 self.outputs_path / "mskn.tif", mskn, check_contrast=False)
             io.imsave(
                 self.outputs_path / "mskv.tif", mskv, check_contrast=False)
-            
-            t1 = time.time()
-            print(f"{t1 - t0:.3f}s")
+            io.imsave(
+                self.outputs_path / "mskb.tif", mskb, check_contrast=False)
+            io.imsave(
+                self.outputs_path / "lbls.tif", lbls, check_contrast=False)
+
 
 #%% Class(Annotate) : ---------------------------------------------------------
 
@@ -221,9 +237,10 @@ class Annotate:
         self.prev_brush_size_timer.timeout.connect(self.prev_brush_size)        
         
         # Run
-        self.initialize()
-        self.init_viewer()
-        self.init_layers()
+        if self.procedure["annotate"]:
+            self.initialize()
+            self.init_viewer()
+            self.init_layers()
         
 #%% Class(Annotate) : initialize() --------------------------------------------
 
@@ -245,6 +262,8 @@ class Annotate:
             "mskc": ("mskc.tif", io.imread),
             "mskn": ("mskn.tif", io.imread),
             "mskv": ("mskv.tif", io.imread),
+            "mskb": ("mskb.tif", io.imread),
+            "lbls": ("lbls.tif", io.imread),
             }
         
         for attr, (filename, loader) in file_map.items():
@@ -255,14 +274,12 @@ class Annotate:
         # Variables
         self.active = "imgs"
         self.labels = {
-            "mskc" : parameters["labels"][0], 
-            "mskn" : parameters["labels"][1], 
-            "mskv" : parameters["labels"][2],
-            "mskb" : parameters["labels"][3],
+            "mskc" :   1, 
+            "mskn" :   2, 
+            "mskv" :   6,
+            "mskb" : 231,
             }
-        self.mskb = np.zeros_like(self.mskc)
-        self.lblb = self.mskc.copy()
-                
+        
 #%% Class(Annotate) : function(s) ---------------------------------------------
                                
     def paint(self):
@@ -290,7 +307,51 @@ class Annotate:
         else:
             self.vwr.layers[self.active].selected_label = value
         
+    # Updates
+            
+    def update_masks(self):
+        
+        # Fetch attibutes
+        for name in self.vwr.layers:
+            name = str(name)
+            if "msk" in name:
+                setattr(self, name, self.vwr.layers[name].data)
+        
+        # Synchronise masks
+        sync_masks(self.mskc, self.mskn, self.mskv)
+        
+        # Update viewer
+        for name in self.vwr.layers:
+            name = str(name)
+            if "msk" in name:
+                self.vwr.layers[name].data = getattr(self, name)
+    
+    def update_labels(self):
+        self.lbls = self.mskc > 0
+        mskb = self.vwr.layers["mskb"].data
+        mskb = skeletonize(mskb) * self.labels["mskb"]
+        self.lbls[mskb == self.labels["mskb"]] = 0
+        self.lbls = label(self.lbls > 0, connectivity=1)
+        self.vwr.layers["lbls"].data = self.lbls
+        
+    def save(self):
+        for name in self.vwr.layers:
+            name = str(name)
+            if name != "imgs":
+                io.imsave(
+                    self.outputs_path / (f"{name}_mod.tif"),
+                    getattr(self, name), check_contrast=False
+                    )
+        
+    def update(self):
+        self.update_masks()
+        self.update_labels()
+        self.save()
+                
+    # Correct
+        
     def correct_mask(self, target):
+        self.update()
         self.active = target
         for name in self.vwr.layers:
             name = str(name)
@@ -298,6 +359,8 @@ class Annotate:
                 self.vwr.layers[name].visible = 1
             else:
                 self.vwr.layers[name].visible = 0
+            if target == "mskb":
+                self.vwr.layers["lbls"].visible = 1
         self.set_active()
         self.set_label()
         self.paint()
@@ -312,15 +375,18 @@ class Annotate:
         # Create "actions" menu
         self.act_group_box = QGroupBox("Actions")
         act_group_layout = QVBoxLayout()
+        self.btn_update = QPushButton("Update")
         self.btn_correct_c = QPushButton("Correct cell")
         self.btn_correct_n = QPushButton("Correct nuclei")
         self.btn_correct_v = QPushButton("Correct vesicles")
         self.btn_correct_b = QPushButton("Correct bounds")
+        act_group_layout.addWidget(self.btn_update)
         act_group_layout.addWidget(self.btn_correct_c)
         act_group_layout.addWidget(self.btn_correct_n)
         act_group_layout.addWidget(self.btn_correct_v)
         act_group_layout.addWidget(self.btn_correct_b)
         self.act_group_box.setLayout(act_group_layout)
+        self.btn_update.clicked.connect(lambda: self.update())
         self.btn_correct_c.clicked.connect(lambda: self.correct_mask("mskc"))
         self.btn_correct_n.clicked.connect(lambda: self.correct_mask("mskn"))
         self.btn_correct_v.clicked.connect(lambda: self.correct_mask("mskv"))
@@ -351,6 +417,10 @@ class Annotate:
             self.prev_brush_size_timer.start(30) 
             yield
             self.prev_brush_size_timer.stop()
+            
+        @Labels.bind_key("Enter", overwrite=True)
+        def update_key(viewer):
+            self.update() 
             
         @self.vwr.mouse_drag_callbacks.append
         def mouse_actions(vwr, event):
@@ -406,26 +476,31 @@ class Annotate:
             
             "mskb" : {
                 "name"     : "mskb",
-                "visible"  : 1,
-                "opacity"  : 0.8,
+                "visible"  : 0,
+                "opacity"  : 0.4,
                 "blending" : "additive",
                 },
             
-            "lblb" : {
-                "name"     : "mskb",
-                "visible"  : 1,
-                "opacity"  : 0.8,
+            "lbls" : {
+                "name"     : "lbls",
+                "visible"  : 0,
+                "opacity"  : 0.2,
                 "blending" : "additive",
                 },
             
             }
         
         self.vwr.add_image(self.imgs , **parameters["imgs"])  
-        self.vwr.add_labels((self.mskc // 255 ) * 1, **parameters["mskc"]) 
-        self.vwr.add_labels((self.mskn // 255 ) * 2, **parameters["mskn"])
-        self.vwr.add_labels((self.mskv // 255 ) * 6, **parameters["mskv"])
-        self.vwr.add_labels(self.mskb, **parameters["mskb"])
-        self.vwr.add_labels(self.lblb, **parameters["lblb"])
+        self.vwr.add_labels(self.lbls, **parameters["lbls"])
+        self.vwr.add_labels(
+            (self.mskc // 255) * self.labels["mskc"], **parameters["mskc"]) 
+        self.vwr.add_labels(
+            (self.mskn // 255) * self.labels["mskn"], **parameters["mskn"])
+        self.vwr.add_labels(
+            (self.mskv // 255) * self.labels["mskv"], **parameters["mskv"])
+        self.vwr.add_labels(
+            (self.mskb // 255) * self.labels["mskb"], **parameters["mskb"])
+
         self.set_active()
         
 #%% Execute -------------------------------------------------------------------

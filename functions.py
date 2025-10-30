@@ -264,6 +264,11 @@ def get_mask(prd, thresh, min_size_o, min_size_h):
     msk = remove_small_holes(msk, area_threshold=min_size_h)
     return (msk * 255).astype("uint8")
 
+def sync_masks(mskc, mskn, mskv):
+    mskn[mskc == 0  ] = 0
+    mskv[mskc == 0  ] = 0
+    mskv[mskn == 255] = 0
+
 #%% Execute -------------------------------------------------------------------
 
 if __name__ == "__main__":
