@@ -262,12 +262,12 @@ def get_mask(prd, thresh, min_size_o, min_size_h):
     msk = prd > thresh * 255
     msk = remove_small_objects(msk, min_size=min_size_o)
     msk = remove_small_holes(msk, area_threshold=min_size_h)
-    return (msk * 255).astype("uint8")
+    return msk.astype("uint8")
 
 def sync_masks(mskc, mskn, mskv):
-    mskn[mskc == 0  ] = 0
-    mskv[mskc == 0  ] = 0
-    mskv[mskn == 255] = 0
+    mskn[~mskc] = 0
+    mskv[~mskc] = 0
+    mskv[mskn] = 0
 
 #%% Execute -------------------------------------------------------------------
 

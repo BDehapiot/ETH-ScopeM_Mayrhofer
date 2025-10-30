@@ -201,10 +201,6 @@ class Main:
             
             t1 = time.time()
             print(f"{t1 - t0:.3f}s")
-            
-            # Initialize labels & boundaries mask
-            mskb = np.zeros_like(mskc)
-            lbls = label(mskc).astype("uint8")
 
             # Save
             io.imsave(
@@ -213,11 +209,6 @@ class Main:
                 self.outputs_path / "mskn.tif", mskn, check_contrast=False)
             io.imsave(
                 self.outputs_path / "mskv.tif", mskv, check_contrast=False)
-            io.imsave(
-                self.outputs_path / "mskb.tif", mskb, check_contrast=False)
-            io.imsave(
-                self.outputs_path / "lbls.tif", lbls, check_contrast=False)
-
 
 #%% Class(Annotate) : ---------------------------------------------------------
 
@@ -251,26 +242,30 @@ class Annotate:
         self.data_path = Path(parameters["data_path"] / self.img_name)
         self.level_path = self.data_path / f"level-{parameters['df']}"
         self.outputs_path = self.level_path / "outputs"
-                
-        # Files
-        file_map = {
-            "imgs": ("imgs.tif", io.imread),
-            "mtds": ("mtds.pkl", lambda p: pickle.load(open(p, "rb"))),
-            "prdc": ("prdc.tif", io.imread),
-            "prdn": ("prdn.tif", io.imread),
-            "prdv": ("prdv.tif", io.imread),
-            "mskc": ("mskc.tif", io.imread),
-            "mskn": ("mskn.tif", io.imread),
-            "mskv": ("mskv.tif", io.imread),
-            "mskb": ("mskb.tif", io.imread),
-            "lbls": ("lbls.tif", io.imread),
+              
+        # Images
+        filemap = {
+            "imgs" : ("imgs.tif", io.imread),
+            "mtds" : ("mtds.pkl", lambda p: pickle.load(open(p, "rb"))),
+            "mskc" : ("mskc_mod.tif", io.imread),
+            "mskn" : ("mskn_mod.tif", io.imread),
+            "mskv" : ("mskv_mod.tif", io.imread),
+            "mskb" : ("mskb_mod.tif", io.imread),
+            "lbls" : ("lbls_mod.tif", io.imread),
             }
         
-        for attr, (filename, loader) in file_map.items():
-            path = self.outputs_path / filename
-            if path.is_file():
+        for attr, (name, loader) in filemap.items():
+            path = self.outputs_path / name
+            if path.exists():
                 setattr(self, attr, loader(path))
-                
+            else:
+                if name == "mskb_mod.tif":
+                    self.mskb = np.zeros_like(self.mskc)
+                elif name == "lbls_mod.tif":
+                    self.lbls = label(self.mskc).astype("uint8")
+                else:
+                    setattr(self, attr, loader(str(path).replace("_mod", "")))
+            
         # Variables
         self.active = "imgs"
         self.labels = {
@@ -330,14 +325,19 @@ class Annotate:
         self.lbls = self.mskc > 0
         mskb = self.vwr.layers["mskb"].data
         mskb = skeletonize(mskb) * self.labels["mskb"]
-        self.lbls[mskb == self.labels["mskb"]] = 0
-        self.lbls = label(self.lbls > 0, connectivity=1)
+        self.lbls[mskb != 0] = 0
+        self.lbls = label(self.lbls > 0, connectivity=1).astype("uint8")
         self.vwr.layers["lbls"].data = self.lbls
         
     def save(self):
         for name in self.vwr.layers:
             name = str(name)
-            if name != "imgs":
+            if "msk" in name:
+                io.imsave(
+                    self.outputs_path / (f"{name}_mod.tif"),
+                    getattr(self, name) > 0, check_contrast=False
+                    )
+            elif name == "lbls":
                 io.imsave(
                     self.outputs_path / (f"{name}_mod.tif"),
                     getattr(self, name), check_contrast=False
@@ -493,13 +493,13 @@ class Annotate:
         self.vwr.add_image(self.imgs , **parameters["imgs"])  
         self.vwr.add_labels(self.lbls, **parameters["lbls"])
         self.vwr.add_labels(
-            (self.mskc // 255) * self.labels["mskc"], **parameters["mskc"]) 
+            self.mskc * self.labels["mskc"], **parameters["mskc"]) 
         self.vwr.add_labels(
-            (self.mskn // 255) * self.labels["mskn"], **parameters["mskn"])
+            self.mskn * self.labels["mskn"], **parameters["mskn"])
         self.vwr.add_labels(
-            (self.mskv // 255) * self.labels["mskv"], **parameters["mskv"])
+            self.mskv * self.labels["mskv"], **parameters["mskv"])
         self.vwr.add_labels(
-            (self.mskb // 255) * self.labels["mskb"], **parameters["mskb"])
+            self.mskb * self.labels["mskb"], **parameters["mskb"])
 
         self.set_active()
         
@@ -508,6 +508,8 @@ class Annotate:
 if __name__ == "__main__":
     main = Main(procedure=procedure, parameters=parameters)
     annotate = Annotate(procedure=procedure, parameters=parameters)
+    
+    test = annotate.mskc
     
 #%% Development ---------------------------------------------------------------
 
