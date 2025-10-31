@@ -5,6 +5,7 @@ import pickle
 import numpy as np
 from skimage import io
 from pathlib import Path
+import matplotlib.pyplot as plt
 
 # functions
 from functions import (
@@ -37,7 +38,7 @@ procedure = {
     "predict"    : 1,
     "process"    : 1,
     "correct"    : 0,
-    "analyse"    : 1,
+    "analyse"    : 0,
     }
 
 parameters = {
@@ -113,7 +114,7 @@ class Main:
             "mskn_hc": ("mskn_hc.tif", io.imread),
             "mskv_hc": ("mskv_hc.tif", io.imread),
             "mskb_hc": ("mskb_hc.tif", io.imread),
-            "lbls_hc": ("lbls_hc.tif", io.imread),
+            "lblc_hc": ("lblc_hc.tif", io.imread),
             
             }
         
@@ -275,7 +276,7 @@ class Correct:
             "mskn" : ("mskn_hc.tif", io.imread),
             "mskv" : ("mskv_hc.tif", io.imread),
             "mskb" : ("mskb_hc.tif", io.imread),
-            "lbls" : ("lbls_hc.tif", io.imread),
+            "lblc" : ("lblc_hc.tif", io.imread),
             }
         
         for attr, (name, loader) in filemap.items():
@@ -285,8 +286,8 @@ class Correct:
             else:
                 if name == "mskb_hc.tif":
                     self.mskb = np.zeros_like(self.mskc)
-                elif name == "lbls_hc.tif":
-                    self.lbls = label(self.mskc).astype("uint8")
+                elif name == "lblc_hc.tif":
+                    self.lblc = label(self.mskc).astype("uint8")
                 else:
                     setattr(self, attr, loader(str(path).replace("_hc", "")))
             
@@ -338,6 +339,7 @@ class Correct:
         
         # Synchronise masks
         sync_masks(self.mskc, self.mskn, self.mskv)
+        self.mskb[self.mskc == 0] = 0
         
         # Update viewer
         for name in self.vwr.layers:
@@ -346,13 +348,13 @@ class Correct:
                 self.vwr.layers[name].data = getattr(self, name)
     
     def update_labels(self):
-        self.lbls = self.mskc > 0
+        self.lblc = self.mskc > 0
         mskb = self.vwr.layers["mskb"].data
         mskb = skeletonize(mskb) * self.labels["mskb"]
-        self.lbls[mskb != 0] = 0
-        self.lbls = label(self.lbls > 0, connectivity=1).astype("uint8")
+        self.lblc[mskb != 0] = 0
+        self.lblc = label(self.lblc > 0, connectivity=1).astype("uint8")
         self.vwr.layers["mskb"].data = mskb
-        self.vwr.layers["lbls"].data = self.lbls
+        self.vwr.layers["lblc"].data = self.lblc
         
     def save(self):
         for name in self.vwr.layers:
@@ -362,7 +364,7 @@ class Correct:
                     self.outputs_path / (f"{name}_hc.tif"),
                     (getattr(self, name) > 0).astype("uint8"), check_contrast=False
                     )
-            elif name == "lbls":
+            elif name == "lblc":
                 io.imsave(
                     self.outputs_path / (f"{name}_hc.tif"),
                     getattr(self, name), check_contrast=False
@@ -383,7 +385,7 @@ class Correct:
             if name in ["imgs", self.active]:
                 self.vwr.layers[name].visible = 1
                 if name == "mskb":
-                    self.vwr.layers["lbls"].visible = 1
+                    self.vwr.layers["lblc"].visible = 1
             else:
                 self.vwr.layers[name].visible = 0
         self.set_active()
@@ -475,7 +477,7 @@ class Correct:
             "imgs" : {
                 "name"     : "imgs",
                 "visible"  : 1,
-                "opacity"  : 0.5,
+                "opacity"  : 0.6,
                 },
             
             "mskc" : {
@@ -495,19 +497,19 @@ class Correct:
             "mskv" : {
                 "name"     : "mskv",
                 "visible"  : 1,
-                "opacity"  : 0.8,
+                "opacity"  : 0.6,
                 "blending" : "additive",
                 },
             
             "mskb" : {
                 "name"     : "mskb",
                 "visible"  : 0,
-                "opacity"  : 0.4,
+                "opacity"  : 0.6,
                 "blending" : "additive",
                 },
             
-            "lbls" : {
-                "name"     : "lbls",
+            "lblc" : {
+                "name"     : "lblc",
                 "visible"  : 0,
                 "opacity"  : 0.2,
                 "blending" : "additive",
@@ -516,7 +518,7 @@ class Correct:
             }
         
         self.vwr.add_image(self.imgs , **parameters["imgs"])  
-        self.vwr.add_labels(self.lbls, **parameters["lbls"])
+        self.vwr.add_labels(self.lblc, **parameters["lblc"])
         self.vwr.add_labels(
             self.mskc * self.labels["mskc"], **parameters["mskc"]) 
         self.vwr.add_labels(
@@ -553,19 +555,74 @@ if __name__ == "__main__":
         mskn_hc = main.mskn_hc
         mskv_hc = main.mskv_hc
         mskb_hc = main.mskb_hc
-        lbls_hc = main.lbls_hc       
+        lblc_hc = main.lblc_hc       
     
     model_types = parameters["model_types"]
         
     # -------------------------------------------------------------------------
     
     # Imports
+    from skimage.measure import regionprops
     from scipy.ndimage import distance_transform_edt
     
-    # bounds = mskc_hc ^ mskb_hc
-    bounds = mskc_hc & ~mskb_hc
-    vwr = napari.Viewer()
-    vwr.add_image(bounds, opacity=1.00)
+    # Analyse
+    area, distance, intensity = [], [], []
+    edt = distance_transform_edt(mskb_hc == 0)
+    for props in regionprops(label(mskv_hc)):
+        coords = props.coords
+        area.append(props.area)
+        distance.append(np.mean(edt[tuple(coords.T)]))
+        intensity.append(np.mean(imgs[tuple(coords.T)]))
+    area = np.stack(area)
+    distance = np.stack(distance)
+    intensity = np.stack(intensity)
+    
+    # Binned distributions
+    bin_w = 10 
+    bin_hw = bin_w // 2
+    bin_max = np.max(distance)
+    area_b, intensity_b = [], []
+    for bin_center in np.arange(bin_hw, bin_max, bin_w):
+        print(bin_center)
+        idx = np.where(
+            (distance >= (bin_center - bin_hw)) &
+            (distance <  (bin_center + bin_hw))
+            )[0]
+        if len(idx) > 0:
+            area_b.append(np.mean(area[idx]))
+            intensity_b.append(np.mean(intensity[idx]))
+        else:
+            area_b.append(np.nan)
+            intensity_b.append(np.nan)
+            
+    # Plot
+    plt.plot(area_b)
+    plt.plot(intensity_b)
+    
+    #%%
+    
+    
+    # plt.hist(datav, bins=1000)
+    # plt.xlim(0, 100)
+        
+    # # Display
+    # vwr = napari.Viewer()
+    # vwr.add_image(
+    #     (mskc_hc * 255).astype("uint8"), 
+    #     blending="additive", opacity=0.25, visible=0,
+    #     )
+    # vwr.add_image(
+    #     (mskb_hc * 255).astype("uint8"), 
+    #     blending="additive", opacity=1.00, visible=1,
+    #     )
+    # vwr.add_image(
+    #     mskb_hc_edt, 
+    #     blending="additive", opacity=0.25, visible=1,
+    #     )
+    # vwr.add_labels(
+    #     lblv, 
+    #     blending="additive", opacity=0.5, visible=1,
+    #     )
     
     # -------------------------------------------------------------------------
     
