@@ -265,9 +265,9 @@ def get_mask(prd, thresh, min_size_o, min_size_h):
     return msk.astype("uint8")
 
 def sync_masks(mskc, mskn, mskv):
-    mskn[~mskc] = 0
-    mskv[~mskc] = 0
-    mskv[mskn] = 0
+    mskn[mskc == 0] = 0
+    mskv[mskc == 0] = 0
+    mskv[mskn > 0 ] = 0
 
 #%% Execute -------------------------------------------------------------------
 

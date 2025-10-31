@@ -36,7 +36,8 @@ procedure = {
     "preprocess" : 1,
     "predict"    : 1,
     "process"    : 1,
-    "annotate"   : 1,
+    "correct"    : 0,
+    "analyse"    : 1,
     }
 
 parameters = {
@@ -58,9 +59,6 @@ parameters = {
         (0.5, 16, 8),
         ],   
     
-    # Annotate
-    "labels" : [1, 2, 6, 8],
-    
     }
 
 #%% Class(Main) : -------------------------------------------------------------
@@ -80,6 +78,8 @@ class Main:
         if self.procedure["preprocess"]: self.preprocess() 
         if self.procedure["predict"   ]: self.predict()
         if self.procedure["process"   ]: self.process()
+        if self.procedure["correct"   ]: self.correct()
+        if self.procedure["analyse"   ]: self.analyse()
         
 #%% Class(Main) : initialize() ------------------------------------------------
         
@@ -93,14 +93,28 @@ class Main:
         
         # Files
         file_map = {
+            
+            # Image
             "imgs": ("imgs.tif", io.imread),
             "mtds": ("mtds.pkl", lambda p: pickle.load(open(p, "rb"))),
+            
+            # Predictions
             "prdc": ("prdc.tif", io.imread),
             "prdn": ("prdn.tif", io.imread),
             "prdv": ("prdv.tif", io.imread),
+            
+            # Masks
             "mskc": ("mskc.tif", io.imread),
             "mskn": ("mskn.tif", io.imread),
             "mskv": ("mskv.tif", io.imread),
+            
+            # Hand corrections
+            "mskc_hc": ("mskc_hc.tif", io.imread),
+            "mskn_hc": ("mskn_hc.tif", io.imread),
+            "mskv_hc": ("mskv_hc.tif", io.imread),
+            "mskb_hc": ("mskb_hc.tif", io.imread),
+            "lbls_hc": ("lbls_hc.tif", io.imread),
+            
             }
         
         for attr, (filename, loader) in file_map.items():
@@ -210,9 +224,19 @@ class Main:
             io.imsave(
                 self.outputs_path / "mskv.tif", mskv, check_contrast=False)
 
-#%% Class(Annotate) : ---------------------------------------------------------
+#%% Class(Main) : Correct() ---------------------------------------------------
 
-class Annotate:
+    def correct(self):
+        Correct(procedure=self.procedure, parameters=self.parameters)
+
+#%% Class(Main) : analyse() --------------------------------------------------- 
+    
+    def analyse(self):
+        pass
+
+#%% Class(Correct) : ----------------------------------------------------------
+
+class Correct:
     
     def __init__(self, procedure=None, parameters=None):
         
@@ -228,12 +252,12 @@ class Annotate:
         self.prev_brush_size_timer.timeout.connect(self.prev_brush_size)        
         
         # Run
-        if self.procedure["annotate"]:
+        if self.procedure["correct"]:
             self.initialize()
             self.init_viewer()
             self.init_layers()
         
-#%% Class(Annotate) : initialize() --------------------------------------------
+#%% Class(Correct) : initialize() ---------------------------------------------
 
     def initialize(self):
         
@@ -247,11 +271,11 @@ class Annotate:
         filemap = {
             "imgs" : ("imgs.tif", io.imread),
             "mtds" : ("mtds.pkl", lambda p: pickle.load(open(p, "rb"))),
-            "mskc" : ("mskc_mod.tif", io.imread),
-            "mskn" : ("mskn_mod.tif", io.imread),
-            "mskv" : ("mskv_mod.tif", io.imread),
-            "mskb" : ("mskb_mod.tif", io.imread),
-            "lbls" : ("lbls_mod.tif", io.imread),
+            "mskc" : ("mskc_hc.tif", io.imread),
+            "mskn" : ("mskn_hc.tif", io.imread),
+            "mskv" : ("mskv_hc.tif", io.imread),
+            "mskb" : ("mskb_hc.tif", io.imread),
+            "lbls" : ("lbls_hc.tif", io.imread),
             }
         
         for attr, (name, loader) in filemap.items():
@@ -259,23 +283,23 @@ class Annotate:
             if path.exists():
                 setattr(self, attr, loader(path))
             else:
-                if name == "mskb_mod.tif":
+                if name == "mskb_hc.tif":
                     self.mskb = np.zeros_like(self.mskc)
-                elif name == "lbls_mod.tif":
+                elif name == "lbls_hc.tif":
                     self.lbls = label(self.mskc).astype("uint8")
                 else:
-                    setattr(self, attr, loader(str(path).replace("_mod", "")))
+                    setattr(self, attr, loader(str(path).replace("_hc", "")))
             
         # Variables
         self.active = "imgs"
         self.labels = {
-            "mskc" :   1, 
-            "mskn" :   2, 
-            "mskv" :   6,
+            "mskc" : 1, 
+            "mskn" : 2, 
+            "mskv" : 6,
             "mskb" : 231,
             }
         
-#%% Class(Annotate) : function(s) ---------------------------------------------
+#%% Class(Correct) : function(s) ----------------------------------------------
                                
     def paint(self):
         self.vwr.layers[self.active].mode = "paint"
@@ -327,6 +351,7 @@ class Annotate:
         mskb = skeletonize(mskb) * self.labels["mskb"]
         self.lbls[mskb != 0] = 0
         self.lbls = label(self.lbls > 0, connectivity=1).astype("uint8")
+        self.vwr.layers["mskb"].data = mskb
         self.vwr.layers["lbls"].data = self.lbls
         
     def save(self):
@@ -334,12 +359,12 @@ class Annotate:
             name = str(name)
             if "msk" in name:
                 io.imsave(
-                    self.outputs_path / (f"{name}_mod.tif"),
-                    getattr(self, name) > 0, check_contrast=False
+                    self.outputs_path / (f"{name}_hc.tif"),
+                    (getattr(self, name) > 0).astype("uint8"), check_contrast=False
                     )
             elif name == "lbls":
                 io.imsave(
-                    self.outputs_path / (f"{name}_mod.tif"),
+                    self.outputs_path / (f"{name}_hc.tif"),
                     getattr(self, name), check_contrast=False
                     )
         
@@ -357,15 +382,15 @@ class Annotate:
             name = str(name)
             if name in ["imgs", self.active]:
                 self.vwr.layers[name].visible = 1
+                if name == "mskb":
+                    self.vwr.layers["lbls"].visible = 1
             else:
                 self.vwr.layers[name].visible = 0
-            if target == "mskb":
-                self.vwr.layers["lbls"].visible = 1
         self.set_active()
         self.set_label()
         self.paint()
 
-#%% Class(Annotate) : init_viewer() -------------------------------------------
+#%% Class(Correct) : init_viewer() --------------------------------------------
 
     def init_viewer(self):
                 
@@ -441,7 +466,7 @@ class Annotate:
                     yield
                     self.paint()
         
-#%% Class(Annotate) : init_layers() -------------------------------------------
+#%% Class(Correct) : init_layers() --------------------------------------------
 
     def init_layers(self):  
 
@@ -500,6 +525,11 @@ class Annotate:
             self.mskv * self.labels["mskv"], **parameters["mskv"])
         self.vwr.add_labels(
             self.mskb * self.labels["mskb"], **parameters["mskb"])
+        
+        # Set default brush size
+        for layer in self.vwr.layers:
+            if layer.__class__.__name__ == "Labels":
+                layer.brush_size = 60
 
         self.set_active()
         
@@ -507,26 +537,37 @@ class Annotate:
 
 if __name__ == "__main__":
     main = Main(procedure=procedure, parameters=parameters)
-    annotate = Annotate(procedure=procedure, parameters=parameters)
-    
-    test = annotate.mskc
     
 #%% Development ---------------------------------------------------------------
-
-    # # Imports
-    # from skimage.transform import rescale
         
-    # # Fetch
-    # imgs = main.imgs
-    # prdc = main.prdc
-    # prdn = main.prdn
-    # prdv = main.prdv
-    # mskc = main.mskc
-    # mskn = main.mskn
-    # mskv = main.mskv
-    # model_types = parameters["model_types"]
+    # Fetch
+    imgs = main.imgs
+    prdc = main.prdc
+    prdn = main.prdn
+    prdv = main.prdv
+    mskc = main.mskc
+    mskn = main.mskn
+    mskv = main.mskv
+    if hasattr(main, "mskc_hc"):
+        mskc_hc = main.mskc_hc
+        mskn_hc = main.mskn_hc
+        mskv_hc = main.mskv_hc
+        mskb_hc = main.mskb_hc
+        lbls_hc = main.lbls_hc       
+    
+    model_types = parameters["model_types"]
         
-    # # -------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
+    
+    # Imports
+    from scipy.ndimage import distance_transform_edt
+    
+    # bounds = mskc_hc ^ mskb_hc
+    bounds = mskc_hc & ~mskb_hc
+    vwr = napari.Viewer()
+    vwr.add_image(bounds, opacity=1.00)
+    
+    # -------------------------------------------------------------------------
     
     # # Display
     # prd_params = {
