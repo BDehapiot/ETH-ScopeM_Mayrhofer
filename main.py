@@ -3,20 +3,22 @@
 import time
 import pickle
 import numpy as np
+import pandas as pd
 from skimage import io
 from pathlib import Path
-import matplotlib.pyplot as plt
 
 # functions
 from functions import (
     clear_directory,
     downscale_images, load_images, custom_normalization, 
-    get_shift, stich, predict, get_mask, sync_masks
+    get_shift, stich, predict, get_mask, sync_masks,
+    binned_distribution,
     )
 
 # skimage
-from skimage.measure import label
 from skimage.morphology import skeletonize
+from skimage.measure import label, regionprops
+from scipy.ndimage import distance_transform_edt
 
 # napari
 import napari
@@ -30,13 +32,17 @@ from qtpy.QtWidgets import (
     QGroupBox, QVBoxLayout,
     )
 
+# matplot
+import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+
 #%% Inputs --------------------------------------------------------------------
 
 procedure = {
-    "downscale"  : 1,
-    "preprocess" : 1,
-    "predict"    : 1,
-    "process"    : 1,
+    "downscale"  : 0,
+    "preprocess" : 0,
+    "predict"    : 0,
+    "process"    : 0,
     "correct"    : 0,
     "analyse"    : 0,
     }
@@ -55,9 +61,12 @@ parameters = {
     
     # Process
     "mask_parameters" : [
-        (0.5, 4096, 32),
-        (0.5, 512, 32),
-        (0.5, 16, 8),
+        # 1) prediction threshold
+        # 2) minimum object size
+        # 3) minimum hole size
+        (0.5, 4096, 32), # cells
+        (0.5, 512, 32),  # nuclei
+        (0.5, 16, 8),    # vesicles
         ],   
     
     }
@@ -92,6 +101,13 @@ class Main:
         self.level_path = self.data_path / f"level-{parameters['df']}"
         self.outputs_path = self.level_path / "outputs"
         
+        # Variables
+        parts = self.img_name.split("_")
+        for part in parts:
+            if "nm" in part:
+                self.pixel_size = float(part.replace("nm", ""))
+                self.pixel_size = self.pixel_size * self.df * 1e-3
+        
         # Files
         file_map = {
             
@@ -115,6 +131,9 @@ class Main:
             "mskv_hc": ("mskv_hc.tif", io.imread),
             "mskb_hc": ("mskb_hc.tif", io.imread),
             "lblc_hc": ("lblc_hc.tif", io.imread),
+            
+            # Results
+            "results": ("results.pkl", lambda p: pickle.load(open(p, "rb"))),
             
             }
         
@@ -147,8 +166,7 @@ class Main:
             self.outputs_path.mkdir(parents=True, exist_ok=True)
             
             # Load images
-            imgs, mtds = load_images(
-                self.data_path, df=self.df, suffix="", return_metadata=True)
+            imgs, mtds = load_images(self.data_path, df=self.df)
                 
             # Get shifts
             mtds = get_shift(imgs, mtds)
@@ -233,7 +251,71 @@ class Main:
 #%% Class(Main) : analyse() --------------------------------------------------- 
     
     def analyse(self):
-        pass
+        
+        # Nested funtion(s) ---------------------------------------------------
+
+        def plot(results):
+            
+            # # Get data
+            # area_bdist = binned_distribution(
+            #     results["dist"], y=results["area"], bin_width=2)
+            # int_bdist  = binned_distribution(
+            #     results["dist"], y=results["int" ], bin_width=2)
+            
+            # Initialize plot
+            fig = plt.figure(figsize=(6, 9))
+            gs = fig.add_gridspec(3, 1)
+            ax0 = fig.add_subplot(gs[0, 0])  # Distances
+            ax1 = fig.add_subplot(gs[1, 0])  # Areas
+            ax2 = fig.add_subplot(gs[2, 0])  # Intensities
+            
+            # Distances (ax0)
+            ax0.hist(results["dist"], bins=64, color="lightgray") 
+
+            # Areas (ax1)
+            ax1.hist(results["area"], bins=64, color="lightgray") 
+            ax1_inset = inset_axes(
+                ax1, width="40%", height="40%", loc="upper right")
+            
+            # Intensities (ax2)
+            ax2.hist(results["int" ], bins=64, color="lightgray") 
+            
+            pass
+        
+        # Execute -------------------------------------------------------------
+        
+        self.initialize()
+        
+        # Extract measurments
+        self.results = {
+            "name"       : [],
+            "df"         : [],
+            "pixel_size" : [],
+            "label"      : [],
+            "area"       : [], 
+            "dist"       : [],
+            "int"        : [],
+            }
+        edt = distance_transform_edt(self.mskb_hc == 0)
+        for props in regionprops(label(self.mskv_hc)):
+            coords = props.coords
+            self.results["name"      ].append(self.img_name)
+            self.results["df"        ].append(self.df)
+            self.results["pixel_size"].append(self.pixel_size)
+            self.results["label"     ].append(props.label)
+            self.results["area"      ].append(props.area * (self.pixel_size ** 2))
+            self.results["dist"      ].append(
+                np.mean(edt[tuple(coords.T)]) * self.pixel_size)
+            self.results["int"  ].append(np.mean(self.imgs[tuple(coords.T)]))
+        
+        # Plot
+        plot(self.results)
+        
+        # Save
+        with open(self.outputs_path / "results.pkl", "wb") as f:
+            pickle.dump(self.results, f)
+        results_df = pd.DataFrame(self.results)
+        results_df.to_csv(self.outputs_path / "results.csv", index=False)
 
 #%% Class(Correct) : ----------------------------------------------------------
 
@@ -540,7 +622,7 @@ class Correct:
 if __name__ == "__main__":
     main = Main(procedure=procedure, parameters=parameters)
     
-#%% Development ---------------------------------------------------------------
+#%% Analyse -------------------------------------------------------------------
         
     # Fetch
     imgs = main.imgs
@@ -555,52 +637,91 @@ if __name__ == "__main__":
         mskn_hc = main.mskn_hc
         mskv_hc = main.mskv_hc
         mskb_hc = main.mskb_hc
-        lblc_hc = main.lblc_hc       
+        lblc_hc = main.lblc_hc 
+        results = main.results
     
     model_types = parameters["model_types"]
         
     # -------------------------------------------------------------------------
     
-    # Imports
-    from skimage.measure import regionprops
-    from scipy.ndimage import distance_transform_edt
+    # # Imports
+    # from skimage.measure import regionprops
+    # from scipy.ndimage import distance_transform_edt
     
-    # Analyse
-    area, distance, intensity = [], [], []
-    edt = distance_transform_edt(mskb_hc == 0)
-    for props in regionprops(label(mskv_hc)):
-        coords = props.coords
-        area.append(props.area)
-        distance.append(np.mean(edt[tuple(coords.T)]))
-        intensity.append(np.mean(imgs[tuple(coords.T)]))
-    area = np.stack(area)
-    distance = np.stack(distance)
-    intensity = np.stack(intensity)
+    # def binned_distribution(x, y=None, bin_width=10):
+    #     bin_half_width = bin_width // 2
+    #     bin_max = np.max(x)
+    #     bin_centers = np.arange(bin_half_width, bin_max, bin_width, dtype=int)
+    #     distribution = []
+    #     for bin_center in bin_centers:
+    #         idx = np.where(
+    #             (distance >= (bin_center - bin_half_width)) &
+    #             (distance <  (bin_center + bin_half_width))
+    #             )[0]
+    #         if y is None:
+    #             distribution.append(
+    #                 (bin_center, len(idx)))
+    #         else:
+    #             distribution.append(
+    #                 (bin_center, np.mean(y[idx])))
+    #     return np.stack(distribution)
     
-    # Binned distributions
-    bin_w = 10 
-    bin_hw = bin_w // 2
-    bin_max = np.max(distance)
-    area_b, intensity_b = [], []
-    for bin_center in np.arange(bin_hw, bin_max, bin_w):
-        print(bin_center)
-        idx = np.where(
-            (distance >= (bin_center - bin_hw)) &
-            (distance <  (bin_center + bin_hw))
-            )[0]
-        if len(idx) > 0:
-            area_b.append(np.mean(area[idx]))
-            intensity_b.append(np.mean(intensity[idx]))
-        else:
-            area_b.append(np.nan)
-            intensity_b.append(np.nan)
-            
-    # Plot
-    plt.plot(area_b)
-    plt.plot(intensity_b)
+    # # Extract measurments
+    # area, distance, intensity = [], [], []
+    # edt = distance_transform_edt(mskb_hc == 0)
+    # for props in regionprops(label(mskv_hc)):
+    #     coords = props.coords
+    #     area.append(props.area)
+    #     distance.append(np.mean(edt[tuple(coords.T)]))
+    #     intensity.append(np.mean(imgs[tuple(coords.T)]))
+    # area = np.stack(area)
+    # distance = np.stack(distance)
+    # intensity = np.stack(intensity)
+    
+    # # Binned distributions
+    # distance_dist = binned_distribution(distance, y=None, bin_width=10)
+    # area_dist = binned_distribution(distance, y=area, bin_width=10)
+    # intensity_dist = binned_distribution(distance, y=intensity, bin_width=10)
+                
+#%% Plot ---------------------------------------------------------------------- 
+    
+    # # Initialize plot
+    # fig = plt.figure(figsize=(6, 9))
+    # gs = fig.add_gridspec(3, 1)
+    # ax0 = fig.add_subplot(gs[0, 0])  # bar plot #1
+    # ax1 = fig.add_subplot(gs[1, 0])  # bar plot #2
+    # ax2 = fig.add_subplot(gs[2, 0])  # bar plot #3
+    
+    # ax0.bar(
+    #     distance_dist[:, 0], distance_dist[:, 1],
+    #     width=8, alpha=1, color="lightgray",
+    #     )
+    # ax0.set_title("Distance")
+    # ax0.set_ylabel("Count")
+    # ax0.set_xlabel("Dist. to cell junction")
+    # ax0.set_xlim(-5, 500)
+    
+    # ax1.bar(
+    #     area_dist[:, 0], area_dist[:, 1],
+    #     width=8, alpha=1, color="lightgray",
+    #     )
+    # ax1.set_title("Area")
+    # ax1.set_ylabel("Area")
+    # ax1.set_xlabel("Dist. to cell junction")
+    # ax1.set_xlim(-5, 500)
+    
+    # ax2.bar(
+    #     intensity_dist[:, 0], intensity_dist[:, 1],
+    #     width=8, alpha=1, color="lightgray",
+    #     )
+    # ax2.set_title("Intensity")
+    # ax2.set_ylabel("Intensity (A.U.)")
+    # ax2.set_xlabel("Dist. to cell junction")
+    # ax2.set_xlim(-5, 500)
+    
+    # plt.tight_layout()
     
     #%%
-    
     
     # plt.hist(datav, bins=1000)
     # plt.xlim(0, 100)

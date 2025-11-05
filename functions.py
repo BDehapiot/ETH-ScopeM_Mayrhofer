@@ -77,13 +77,13 @@ def downscale_images(data_path, df=16):
 
 #%% Function : load_images() --------------------------------------------------
 
-def load_images(data_path, df=16, suffix="", return_metadata=False):
+def load_images(data_path, df=16):
 
     if df == 1:
         level_path = data_path
     else:
         level_path = data_path / f"level-{df}"
-    img_paths = list(level_path.glob(f"*level-{df}{suffix}.tif"))
+    img_paths = list(level_path.glob(f"*level-{df}.tif"))
     
     t0 = time.time()
     print("load_images() :", end=" ", flush=True)
@@ -268,72 +268,26 @@ def sync_masks(mskc, mskn, mskv):
     mskn[mskc == 0] = 0
     mskv[mskc == 0] = 0
     mskv[mskn > 0 ] = 0
+    
+#%% Function : binned_distribution() ------------------------------------------
 
-#%% Execute -------------------------------------------------------------------
-
-if __name__ == "__main__":
-    
-    # Parameters
-    df0, df1 = 16, 8
-    model_types = ["cells", "nuclei", "vesicles"]
-    
-    # Paths
-    img_name = "Ins1e_wt_1.7nm_00"
-    data_path = Path(f"D:\local_Mayrhofer\data\{img_name}")
-    
-    # Log
-    log_str = f"{img_name} - df{df0}"
-    print(log_str); print('-' * len(log_str))
-            
-    # downscale_images() ------------------------------------------------------
-    
-    # downscale_images(data_path, df=df0)
-    # downscale_images(data_path, df=df1)
-
-    # load_images() -----------------------------------------------------------
-    
-    imgs0, mtds = load_images(
-        data_path, df=df0, suffix="", return_metadata=True)
-    imgs1, _ = load_images(
-        data_path, df=df1, suffix="", return_metadata=True)
-        
-    # get_shifts() ------------------------------------------------------------
-    
-    mtds = get_shift(imgs0, mtds)
-        
-    # stich() -----------------------------------------------------------------
-    
-    # Custom normalization
-    imgs0 = custom_normalization(imgs0)
-    imgs1 = custom_normalization(imgs1)
-    
-    # Stich 
-    imgs0_s = stich(imgs0, mtds)
-    imgs1_s = stich(imgs1, mtds, scaling_coeff=2)
-    
-    import napari
-    vwr = napari.Viewer()
-    vwr.add_image(imgs1_s, opacity=0.5)
-    
-    # predict() ---------------------------------------------------------------
-    
-    # prd_c = predict(imgs0_s, model_type="cells")
-    # prd_n = predict(imgs0_s, model_type="nuclei")
-    # prd_v = predict(imgs0_s, model_type="vesicles")
-        
-    # display -----------------------------------------------------------------
-
-    # prd_params = {
-    #     "cells"    : {"colormap" : "red"     , "opacity" : 0.1},
-    #     "nuclei"   : {"colormap" : "bop blue", "opacity" : 0.2},
-    #     "vesicles" : {"colormap" : "yellow"  , "opacity" : 1.0},
-    #     }
-    
-    # import napari
-    # vwr = napari.Viewer()
-    # vwr.add_image(imgs0_s, opacity=0.5)
-    # for i, prd in enumerate([prd_c, prd_n, prd_v]):
-    #     vwr.add_image(
-    #         prd, name=model_types[i], 
-    #         blending="additive", **prd_params[model_types[i]]
-    #         ) 
+def binned_distribution(x, y=None, bin_width=10):
+    bin_half_width = bin_width // 2
+    bin_max = np.max(x)
+    bin_centers = np.arange(
+        bin_half_width, bin_max, bin_width, dtype=int)
+    distribution = []
+    for bin_center in bin_centers:
+        idx = np.where(
+            (x >= (bin_center - bin_half_width)) &
+            (x <  (bin_center + bin_half_width))
+            )[0]
+        if y is None:
+            distribution.append(
+                (bin_center, len(idx)))
+        else:
+            if len(idx) > 0:
+                distribution.append((bin_center, np.mean(y[idx])))
+            else:
+                distribution.append((bin_center, np.nan))
+    return np.stack(distribution)
