@@ -10,7 +10,7 @@ from pathlib import Path
 # functions
 from functions import (
     clear_directory,
-    downscale_images, load_images, custom_normalization, 
+    downscale_images, load_images, custom_normalization,
     get_shift, stich, predict, get_mask, sync_masks,
     binned_distribution,
     )
@@ -39,18 +39,19 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 #%% Inputs --------------------------------------------------------------------
 
 procedure = {
-    "downscale"  : 0,
-    "preprocess" : 0,
-    "predict"    : 0,
-    "process"    : 0,
-    "correct"    : 0,
+    "downscale"  : 1,
+    "preprocess" : 1,
+    "predict"    : 1,
+    "process"    : 2,
+    "correct"    : 1,
     "analyse"    : 0,
     }
 
 parameters = {
     
     # Paths
-    "img_name"  : "Ins1e_wt_1.7nm_00",
+    # "img_name"  : "Ins1e_wt_1.7nm_00",
+    "img_name"  : "Gigyf12d_ko_1.7nm_00",
     "data_path" : Path("D:\local_Mayrhofer\data"),
     
     # Downscale
@@ -60,14 +61,15 @@ parameters = {
     "model_types" : ["cells", "nuclei", "vesicles"],
     
     # Process
-    "mask_parameters" : [
-        # 1) prediction threshold
-        # 2) minimum object size
-        # 3) minimum hole size
-        (0.5, 4096, 32), # cells
-        (0.5, 512, 32),  # nuclei
-        (0.5, 16, 8),    # vesicles
-        ],   
+    
+    # For df=16
+    # 1) prediction threshold
+    # 2) minimum object size
+    # 3) minimum hole size
+    
+    "mskc_params" : (0.5, 4096, 32),
+    "mskn_params" : (0.5, 512, 32),
+    "mskv_params" : (0.25, 16, 4),
     
     }
 
@@ -175,7 +177,7 @@ class Main:
             imgs = custom_normalization(imgs)
             
             # Stich
-            imgs_s = stich(imgs, mtds, scaling_coeff=1)  
+            imgs_s = stich(imgs, mtds, scaling_coeff=1)
             
             # Save
             with open(self.outputs_path / "mtds.pkl", "wb") as f:
@@ -227,9 +229,9 @@ class Main:
             t0 = time.time()
             print("get_mask() :", end=" ", flush=True)
             
-            mskc = get_mask(self.prdc, *self.parameters["mask_parameters"][0])
-            mskn = get_mask(self.prdn, *self.parameters["mask_parameters"][1])
-            mskv = get_mask(self.prdv, *self.parameters["mask_parameters"][2])
+            mskc = get_mask(self.prdc, *self.parameters["mskc_params"])
+            mskn = get_mask(self.prdn, *self.parameters["mskn_params"])
+            mskv = get_mask(self.prdv, *self.parameters["mskv_params"])
             sync_masks(mskc, mskn, mskv)
             
             t1 = time.time()
@@ -256,32 +258,69 @@ class Main:
 
         def plot(results):
             
-            # # Get data
-            # area_bdist = binned_distribution(
-            #     results["dist"], y=results["area"], bin_width=2)
-            # int_bdist  = binned_distribution(
-            #     results["dist"], y=results["int" ], bin_width=2)
-            
+            # Parameters
+            nbins = 128
+            bdist_width = 0.5
+            inset_ratio = "50%"
+
+            # Get data
+            area_bdist = binned_distribution(
+                results["dist"], y=results["area"], bin_width=bdist_width)
+            int_bdist  = binned_distribution(
+                results["dist"], y=results["int" ], bin_width=bdist_width)
+
             # Initialize plot
-            fig = plt.figure(figsize=(6, 9))
+            fig = plt.figure(figsize=(6, 9), constrained_layout=True)
             gs = fig.add_gridspec(3, 1)
             ax0 = fig.add_subplot(gs[0, 0])  # Distances
             ax1 = fig.add_subplot(gs[1, 0])  # Areas
             ax2 = fig.add_subplot(gs[2, 0])  # Intensities
             
-            # Distances (ax0)
-            ax0.hist(results["dist"], bins=64, color="lightgray") 
-
+            # Distance (ax0)
+            ax0.hist(results["dist"], bins=nbins, color="lightgray") 
+            ax0.set_title("Vesicle distance to cell junctions", loc="left")
+            ax0.set_xlabel("Distance (µm)")
+            ax0.set_ylabel("count")
+            
+            # Distance inset (axi0)
+            axi0 = inset_axes(
+                ax0, width="50%", height="50%", loc="upper right")
+            axi0.hist(results["dist"], bins=nbins * 16, color="lightgray") 
+            axi0.set_title("Distance (zoomed)", y=0.75)
+            axi0.set_xlabel("Distance (µm)")
+            axi0.set_ylabel("count")
+            axi0.set_xlim(-0.1, 2.1)
+            
             # Areas (ax1)
-            ax1.hist(results["area"], bins=64, color="lightgray") 
-            ax1_inset = inset_axes(
-                ax1, width="40%", height="40%", loc="upper right")
+            ax1.hist(results["area"], bins=nbins, color="lightgray") 
+            ax1.set_title("Vesicle area", loc="left")
+            ax1.set_xlabel("Area (µm²)")
+            ax1.set_ylabel("count")
+            
+            # Areas inset (axi1)
+            axi1 = inset_axes(
+                ax1, width=inset_ratio, height=inset_ratio, loc="upper right")
+            axi1.bar(area_bdist[:, 0], area_bdist[:, 1], color="lightgray")
+            axi1.set_title("Areas acc. to distance", y=0.75)
+            axi1.set_xlabel("Distance (µm)")
+            axi1.set_ylabel("Area (µm²)")
             
             # Intensities (ax2)
-            ax2.hist(results["int" ], bins=64, color="lightgray") 
+            ax2.hist(results["int" ], bins=nbins, color="lightgray")
+            ax2.set_title("Vesicle mean intensity", loc="left")
+            ax2.set_xlabel("Intensity (A.U.)")
+            ax2.set_ylabel("count")
             
-            pass
-        
+            # Intensities (axi2)
+            axi2 = inset_axes(
+                ax2, width=inset_ratio, height=inset_ratio, loc="upper right")
+            axi2.bar(int_bdist[:, 0], int_bdist[:, 1], color="lightgray")
+            axi2.set_title("Intensity acc. to distance", y=0.75)
+            axi2.set_xlabel("Distance (µm)")
+            axi2.set_ylabel("Intensity (A.U.)")   
+
+            return fig        
+
         # Execute -------------------------------------------------------------
         
         self.initialize()
@@ -309,13 +348,14 @@ class Main:
             self.results["int"  ].append(np.mean(self.imgs[tuple(coords.T)]))
         
         # Plot
-        plot(self.results)
+        fig = plot(self.results)
         
         # Save
         with open(self.outputs_path / "results.pkl", "wb") as f:
             pickle.dump(self.results, f)
         results_df = pd.DataFrame(self.results)
         results_df.to_csv(self.outputs_path / "results.csv", index=False)
+        fig.savefig(self.outputs_path  / "results_plot.png", format="png")
 
 #%% Class(Correct) : ----------------------------------------------------------
 
@@ -354,6 +394,9 @@ class Correct:
         filemap = {
             "imgs" : ("imgs.tif", io.imread),
             "mtds" : ("mtds.pkl", lambda p: pickle.load(open(p, "rb"))),
+            "prdc" : ("prdc_hc.tif", io.imread),
+            "prdn" : ("prdn_hc.tif", io.imread),
+            "prdv" : ("prdv_hc.tif", io.imread),
             "mskc" : ("mskc_hc.tif", io.imread),
             "mskn" : ("mskn_hc.tif", io.imread),
             "mskv" : ("mskv_hc.tif", io.imread),
@@ -562,44 +605,71 @@ class Correct:
                 "opacity"  : 0.6,
                 },
             
+            "prdc" : {
+                "name"     : "prdc",
+                "colormap" : "gist_earth",
+                "blending" : "additive",
+                "visible"  : 0,
+                "opacity"  : 1.0,
+                },
+            
+            "prdn" : {
+                "name"     : "prdn",
+                "colormap" : "gist_earth",
+                "blending" : "additive",
+                "visible"  : 0,
+                "opacity"  : 1.0,
+                },
+            
+            "prdv" : {
+                "name"     : "prdv",
+                "colormap" : "gist_earth",
+                "blending" : "additive",
+                "visible"  : 0,
+                "opacity"  : 1.0,
+                },
+            
             "mskc" : {
                 "name"     : "mskc",
+                "blending" : "additive",
                 "visible"  : 1,
                 "opacity"  : 0.2,
-                "blending" : "additive",
                 },
             
             "mskn" : {
                 "name"     : "mskn",
+                "blending" : "additive",
                 "visible"  : 1,
                 "opacity"  : 0.4,
-                "blending" : "additive",
                 },
             
             "mskv" : {
                 "name"     : "mskv",
+                "blending" : "additive",
                 "visible"  : 1,
                 "opacity"  : 0.6,
-                "blending" : "additive",
                 },
             
             "mskb" : {
                 "name"     : "mskb",
+                "blending" : "additive",
                 "visible"  : 0,
                 "opacity"  : 0.6,
-                "blending" : "additive",
                 },
             
             "lblc" : {
                 "name"     : "lblc",
+                "blending" : "additive",
                 "visible"  : 0,
                 "opacity"  : 0.2,
-                "blending" : "additive",
                 },
             
             }
         
-        self.vwr.add_image(self.imgs , **parameters["imgs"])  
+        self.vwr.add_image(self.imgs , **parameters["imgs"]) 
+        self.vwr.add_image(self.prdc , **parameters["prdc"])  
+        self.vwr.add_image(self.prdn , **parameters["prdn"])  
+        self.vwr.add_image(self.prdv , **parameters["prdv"])  
         self.vwr.add_labels(self.lblc, **parameters["lblc"])
         self.vwr.add_labels(
             self.mskc * self.labels["mskc"], **parameters["mskc"]) 
@@ -624,152 +694,81 @@ if __name__ == "__main__":
     
 #%% Analyse -------------------------------------------------------------------
         
-    # Fetch
-    imgs = main.imgs
-    prdc = main.prdc
-    prdn = main.prdn
-    prdv = main.prdv
-    mskc = main.mskc
-    mskn = main.mskn
-    mskv = main.mskv
-    if hasattr(main, "mskc_hc"):
-        mskc_hc = main.mskc_hc
-        mskn_hc = main.mskn_hc
-        mskv_hc = main.mskv_hc
-        mskb_hc = main.mskb_hc
-        lblc_hc = main.lblc_hc 
-        results = main.results
-    
-    model_types = parameters["model_types"]
-        
-    # -------------------------------------------------------------------------
-    
-    # # Imports
-    # from skimage.measure import regionprops
-    # from scipy.ndimage import distance_transform_edt
-    
-    # def binned_distribution(x, y=None, bin_width=10):
-    #     bin_half_width = bin_width // 2
-    #     bin_max = np.max(x)
-    #     bin_centers = np.arange(bin_half_width, bin_max, bin_width, dtype=int)
-    #     distribution = []
-    #     for bin_center in bin_centers:
-    #         idx = np.where(
-    #             (distance >= (bin_center - bin_half_width)) &
-    #             (distance <  (bin_center + bin_half_width))
-    #             )[0]
-    #         if y is None:
-    #             distribution.append(
-    #                 (bin_center, len(idx)))
-    #         else:
-    #             distribution.append(
-    #                 (bin_center, np.mean(y[idx])))
-    #     return np.stack(distribution)
-    
-    # # Extract measurments
-    # area, distance, intensity = [], [], []
-    # edt = distance_transform_edt(mskb_hc == 0)
-    # for props in regionprops(label(mskv_hc)):
-    #     coords = props.coords
-    #     area.append(props.area)
-    #     distance.append(np.mean(edt[tuple(coords.T)]))
-    #     intensity.append(np.mean(imgs[tuple(coords.T)]))
-    # area = np.stack(area)
-    # distance = np.stack(distance)
-    # intensity = np.stack(intensity)
-    
-    # # Binned distributions
-    # distance_dist = binned_distribution(distance, y=None, bin_width=10)
-    # area_dist = binned_distribution(distance, y=area, bin_width=10)
-    # intensity_dist = binned_distribution(distance, y=intensity, bin_width=10)
+    # # Fetch
+    # imgs = main.imgs
+    # prdc = main.prdc
+    # prdn = main.prdn
+    # prdv = main.prdv
+    # mskc = main.mskc
+    # mskn = main.mskn
+    # mskv = main.mskv
+    # if hasattr(main, "mskc_hc"):
+    #     mskc_hc = main.mskc_hc
+    #     mskn_hc = main.mskn_hc
+    #     mskv_hc = main.mskv_hc
+    #     mskb_hc = main.mskb_hc
+    #     lblc_hc = main.lblc_hc 
+    #     results = main.results
                 
-#%% Plot ---------------------------------------------------------------------- 
-    
+#%% Development ---------------------------------------------------------------
+
+    # # Parameters
+    # nbins = 128
+    # bdist_width = 0.5
+    # inset_ratio = "50%"
+
+    # # Get data
+    # area_bdist = binned_distribution(
+    #     results["dist"], y=results["area"], bin_width=bdist_width)
+    # int_bdist  = binned_distribution(
+    #     results["dist"], y=results["int" ], bin_width=bdist_width)
+
     # # Initialize plot
-    # fig = plt.figure(figsize=(6, 9))
+    # fig = plt.figure(figsize=(6, 9), constrained_layout=True)
     # gs = fig.add_gridspec(3, 1)
-    # ax0 = fig.add_subplot(gs[0, 0])  # bar plot #1
-    # ax1 = fig.add_subplot(gs[1, 0])  # bar plot #2
-    # ax2 = fig.add_subplot(gs[2, 0])  # bar plot #3
+    # ax0 = fig.add_subplot(gs[0, 0])  # Distances
+    # ax1 = fig.add_subplot(gs[1, 0])  # Areas
+    # ax2 = fig.add_subplot(gs[2, 0])  # Intensities
     
-    # ax0.bar(
-    #     distance_dist[:, 0], distance_dist[:, 1],
-    #     width=8, alpha=1, color="lightgray",
-    #     )
-    # ax0.set_title("Distance")
-    # ax0.set_ylabel("Count")
-    # ax0.set_xlabel("Dist. to cell junction")
-    # ax0.set_xlim(-5, 500)
+    # # Distance (ax0)
+    # ax0.hist(results["dist"], bins=nbins, color="lightgray") 
+    # ax0.set_title("Vesicle distance to cell junctions", loc="left")
+    # ax0.set_xlabel("Distance (µm)")
+    # ax0.set_ylabel("count")
     
-    # ax1.bar(
-    #     area_dist[:, 0], area_dist[:, 1],
-    #     width=8, alpha=1, color="lightgray",
-    #     )
-    # ax1.set_title("Area")
-    # ax1.set_ylabel("Area")
-    # ax1.set_xlabel("Dist. to cell junction")
-    # ax1.set_xlim(-5, 500)
+    # # Distance inset (axi0)
+    # axi0 = inset_axes(
+    #     ax0, width="50%", height="50%", loc="upper right")
+    # axi0.hist(results["dist"], bins=nbins * 16, color="lightgray") 
+    # axi0.set_title("Distance (zoomed)", y=0.75)
+    # axi0.set_xlabel("Distance (µm)")
+    # axi0.set_ylabel("count")
+    # axi0.set_xlim(-0.1, 2.1)
     
-    # ax2.bar(
-    #     intensity_dist[:, 0], intensity_dist[:, 1],
-    #     width=8, alpha=1, color="lightgray",
-    #     )
-    # ax2.set_title("Intensity")
-    # ax2.set_ylabel("Intensity (A.U.)")
-    # ax2.set_xlabel("Dist. to cell junction")
-    # ax2.set_xlim(-5, 500)
+    # # Areas (ax1)
+    # ax1.hist(results["area"], bins=nbins, color="lightgray") 
+    # ax1.set_title("Vesicle area", loc="left")
+    # ax1.set_xlabel("Area (µm²)")
+    # ax1.set_ylabel("count")
     
-    # plt.tight_layout()
+    # # Areas inset (axi1)
+    # axi1 = inset_axes(
+    #     ax1, width=inset_ratio, height=inset_ratio, loc="upper right")
+    # axi1.bar(area_bdist[:, 0], area_bdist[:, 1], color="lightgray")
+    # axi1.set_title("Areas acc. to distance", y=0.75)
+    # axi1.set_xlabel("Distance (µm)")
+    # axi1.set_ylabel("Area (µm²)")
     
-    #%%
+    # # Intensities (ax2)
+    # ax2.hist(results["int" ], bins=nbins, color="lightgray")
+    # ax2.set_title("Vesicle mean intensity", loc="left")
+    # ax2.set_xlabel("Intensity (A.U.)")
+    # ax2.set_ylabel("count")
     
-    # plt.hist(datav, bins=1000)
-    # plt.xlim(0, 100)
-        
-    # # Display
-    # vwr = napari.Viewer()
-    # vwr.add_image(
-    #     (mskc_hc * 255).astype("uint8"), 
-    #     blending="additive", opacity=0.25, visible=0,
-    #     )
-    # vwr.add_image(
-    #     (mskb_hc * 255).astype("uint8"), 
-    #     blending="additive", opacity=1.00, visible=1,
-    #     )
-    # vwr.add_image(
-    #     mskb_hc_edt, 
-    #     blending="additive", opacity=0.25, visible=1,
-    #     )
-    # vwr.add_labels(
-    #     lblv, 
-    #     blending="additive", opacity=0.5, visible=1,
-    #     )
-    
-    # -------------------------------------------------------------------------
-    
-    # # Display
-    # prd_params = {
-    #     "cells"    : {"colormap" : "red"     , "opacity" : 0.1},
-    #     "nuclei"   : {"colormap" : "bop blue", "opacity" : 0.2},
-    #     "vesicles" : {"colormap" : "yellow"  , "opacity" : 0.4},
-    #     }
-    # msk_params = {
-    #     "cells"    : {"colormap" : "red"     , "opacity" : 0.2},
-    #     "nuclei"   : {"colormap" : "bop blue", "opacity" : 0.4},
-    #     "vesicles" : {"colormap" : "yellow"  , "opacity" : 0.8},
-    #     }
-    
-    # vwr = napari.Viewer()
-    # vwr.add_image(imgs, opacity=0.33)
-    # for i, prd in enumerate([prdc, prdn, prdv]):
-    #     vwr.add_image(
-    #         prd, name=f"prd_{model_types[i]}", visible=0,
-    #         blending="additive", **prd_params[model_types[i]]
-    #         ) 
-    # for i, msk in enumerate([mskc, mskn, mskv]):
-    #     vwr.add_image(
-    #         msk, name=f"msk_{model_types[i]}", visible=1,
-    #         blending="additive", **msk_params[model_types[i]]
-    #         ) 
-    
-    
+    # # Intensities (axi2)
+    # axi2 = inset_axes(
+    #     ax2, width=inset_ratio, height=inset_ratio, loc="upper right")
+    # axi2.bar(int_bdist[:, 0], int_bdist[:, 1], color="lightgray")
+    # axi2.set_title("Intensity acc. to distance", y=0.75)
+    # axi2.set_xlabel("Distance (µm)")
+    # axi2.set_ylabel("Intensity (A.U.)")    

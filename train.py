@@ -8,7 +8,6 @@ from pathlib import Path
 from functions import custom_normalization
 
 # bdtools
-from bdtools.norm import norm_pct
 from bdtools.models.unet import UNet
 from bdtools.models.annotate import Annotate
 
@@ -36,7 +35,7 @@ downscale_factor = 1
 
 # UNet train()
 preview = 0
-load_name = ""
+load_name = "model_250_normal_2000-500_1"
 
 # preprocess
 patch_size = 250

@@ -37,6 +37,29 @@ def custom_normalization(imgs):
     imgs = norm_pct(imgs, pct_low=1, pct_high=99, mask=imgs > 0)
     return imgs
 
+def binned_distribution(x, y=None, bin_width=10):
+    x = np.stack(x)
+    y = np.stack(y)
+    bin_half_width = bin_width / 2
+    bin_max = np.max(x)
+    bin_centers = np.arange(
+        bin_half_width, bin_max, bin_width)
+    distribution = []
+    for bin_center in bin_centers:
+        idx = np.where(
+            (x >= (bin_center - bin_half_width)) &
+            (x <  (bin_center + bin_half_width))
+            )[0]
+        if y is None:
+            distribution.append(
+                (bin_center, len(idx)))
+        else:
+            if len(idx) > 0:
+                distribution.append((bin_center, np.mean(y[idx])))
+            else:
+                distribution.append((bin_center, np.nan))
+    return np.stack(distribution)
+
 #%% Function : downscale_images() ---------------------------------------------
 
 def downscale_images(data_path, df=16):
@@ -215,6 +238,11 @@ def stich(imgs, mtds, scaling_coeff=1):
         values, counts = np.unique(arr, return_counts=True)
         return int(values[np.argmax(counts)])
     
+    def trim_images(imgs):
+        imgs = imgs[~np.all(imgs == 0, axis=1)]
+        imgs = imgs[:, ~np.all(imgs == 0, axis=0)]
+        return imgs
+    
     # Execute -----------------------------------------------------------------
     
     t0 = time.time()
@@ -243,6 +271,9 @@ def stich(imgs, mtds, scaling_coeff=1):
         x1r = mtd["x1"] * scaling_coeff + ldx
         imgs_s[y0r:y1r, x0r:x1r] = imgs[i]    
     
+    # Trim zeros rows & cols
+    imgs_s = trim_images(imgs_s)
+    
     t1 = time.time()
     print(f"{t1 - t0:.3f}s")
     
@@ -268,26 +299,3 @@ def sync_masks(mskc, mskn, mskv):
     mskn[mskc == 0] = 0
     mskv[mskc == 0] = 0
     mskv[mskn > 0 ] = 0
-    
-#%% Function : binned_distribution() ------------------------------------------
-
-def binned_distribution(x, y=None, bin_width=10):
-    bin_half_width = bin_width // 2
-    bin_max = np.max(x)
-    bin_centers = np.arange(
-        bin_half_width, bin_max, bin_width, dtype=int)
-    distribution = []
-    for bin_center in bin_centers:
-        idx = np.where(
-            (x >= (bin_center - bin_half_width)) &
-            (x <  (bin_center + bin_half_width))
-            )[0]
-        if y is None:
-            distribution.append(
-                (bin_center, len(idx)))
-        else:
-            if len(idx) > 0:
-                distribution.append((bin_center, np.mean(y[idx])))
-            else:
-                distribution.append((bin_center, np.nan))
-    return np.stack(distribution)

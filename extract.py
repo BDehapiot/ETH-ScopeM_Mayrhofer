@@ -19,7 +19,8 @@ df = 16
 patch_size = 4000 // df
 
 # Paths
-img_name = "Ins1e_wt_1.7nm_00"
+# img_name = "Ins1e_wt_1.7nm_00"
+img_name = "Gigyf12d_ko_1.7nm_00"
 data_path = Path(f"D:\local_Mayrhofer\data\{img_name}")
 if df == 1:
     level_path = data_path
@@ -31,7 +32,7 @@ else:
 def extract(data_path, df=16):
     
     # Load images
-    imgs, mtds = load_images(data_path, df=df, return_metadata=True)
+    imgs, mtds = load_images(data_path, df=df)
     
     # Stich images
     mtds = get_shift(imgs, mtds)
