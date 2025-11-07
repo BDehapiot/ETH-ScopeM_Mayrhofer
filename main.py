@@ -36,13 +36,16 @@ from qtpy.QtWidgets import (
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
+import tensorflow as tf
+import gc
+
 #%% Inputs --------------------------------------------------------------------
 
 procedure = {
-    "downscale"  : 1,
-    "preprocess" : 1,
+    "downscale"  : 0,
+    "preprocess" : 0,
     "predict"    : 1,
-    "process"    : 2,
+    "process"    : 1,
     "correct"    : 1,
     "analyse"    : 0,
     }
@@ -51,11 +54,12 @@ parameters = {
     
     # Paths
     # "img_name"  : "Ins1e_wt_1.7nm_00",
-    "img_name"  : "Gigyf12d_ko_1.7nm_00",
+    # "img_name"  : "Gigyf12d_ko_1.7nm_00",
+    "img_name"  : "Ins1e_wt_3.25nm_00",
     "data_path" : Path("D:\local_Mayrhofer\data"),
     
     # Downscale
-    "df" : 16,
+    "df" : 8,
     
     # Predict
     "model_types" : ["cells", "nuclei", "vesicles"],
@@ -197,22 +201,59 @@ class Main:
                         
 #%% Class(Main) : predict() ---------------------------------------------------
         
+
+
     def predict(self):
         
         self.initialize()
         
+        # # Predict
+        # for m, model_type in enumerate(self.parameters["model_types"]):
+        #     prd_path = self.outputs_path / f"prd{model_type[0]}.tif"
+        #     if not prd_path.exists() or self.procedure["predict"] == 2:
+        #         if m == 0:
+        #             log_str = (f"predict() - {self.img_name} - df{self.df}")
+        #             print(log_str); print('-' * len(log_str))
+        #         prd = predict(self.imgs, model_type=model_type)
+        #         io.imsave(
+        #             self.outputs_path / f"prd{model_type[0]}.tif",
+        #             prd, check_contrast=False
+        #             )
+       
         # Predict
         for m, model_type in enumerate(self.parameters["model_types"]):
             prd_path = self.outputs_path / f"prd{model_type[0]}.tif"
             if not prd_path.exists() or self.procedure["predict"] == 2:
+                
                 if m == 0:
                     log_str = (f"predict() - {self.img_name} - df{self.df}")
                     print(log_str); print('-' * len(log_str))
-                prd = predict(self.imgs, model_type=model_type)
+                
+                if self.img_name == "Ins1e_wt_3.25nm_00":
+                    nY, nX = self.imgs.shape
+                    overlap = 256
+                    imgs0 = self.imgs[:, :nX // 2 + overlap]
+                    imgs1 = self.imgs[:, nX // 2 - overlap:]
+                    prd0 = predict(imgs0, model_type=model_type)
+                    prd1 = predict(imgs1, model_type=model_type)
+                    prd = np.hstack((
+                        prd0[:, :nX // 2],
+                        prd1[:, overlap:],
+                        ))
+                                        
+                else:
+                    prd = predict(self.imgs, model_type=model_type)
+                
                 io.imsave(
                     self.outputs_path / f"prd{model_type[0]}.tif",
                     prd, check_contrast=False
                     )
+                
+                del prd, prd0, prd1, imgs0, imgs1
+                gc.collect()
+                tf.keras.backend.clear_session()
+                    
+        
 
 #%% Class(Main) : process() ---------------------------------------------------
 
@@ -233,6 +274,11 @@ class Main:
             mskn = get_mask(self.prdn, *self.parameters["mskn_params"])
             mskv = get_mask(self.prdv, *self.parameters["mskv_params"])
             sync_masks(mskc, mskn, mskv)
+            
+            for msk in ["mskc", "mskn", "mskv"]:
+                msk_hc_path = self.outputs_path / f"{msk}_hc.tif"
+                if msk_hc_path.exists():
+                    msk_hc_path.unlink()
             
             t1 = time.time()
             print(f"{t1 - t0:.3f}s")
@@ -464,7 +510,6 @@ class Correct:
         
         # Synchronise masks
         sync_masks(self.mskc, self.mskn, self.mskv)
-        self.mskb[self.mskc == 0] = 0
         
         # Update viewer
         for name in self.vwr.layers:
@@ -475,7 +520,8 @@ class Correct:
     def update_labels(self):
         self.lblc = self.mskc > 0
         mskb = self.vwr.layers["mskb"].data
-        mskb = skeletonize(mskb) * self.labels["mskb"]
+        mskb = skeletonize(mskb, method="lee") * self.labels["mskb"]
+        mskb[self.mskc == 0] = 0
         self.lblc[mskb != 0] = 0
         self.lblc = label(self.lblc > 0, connectivity=1).astype("uint8")
         self.vwr.layers["mskb"].data = mskb
@@ -683,7 +729,7 @@ class Correct:
         # Set default brush size
         for layer in self.vwr.layers:
             if layer.__class__.__name__ == "Labels":
-                layer.brush_size = 60
+                layer.brush_size = 20
 
         self.set_active()
         
@@ -696,79 +742,30 @@ if __name__ == "__main__":
         
     # # Fetch
     # imgs = main.imgs
-    # prdc = main.prdc
-    # prdn = main.prdn
-    # prdv = main.prdv
-    # mskc = main.mskc
-    # mskn = main.mskn
-    # mskv = main.mskv
+    # if hasattr(main, "prdc"):
+    #     prdc = main.prdc
+    #     prdn = main.prdn
+    #     prdv = main.prdv
+    # if hasattr(main, "mskc"):
+    #     mskc = main.mskc
+    #     mskn = main.mskn
+    #     mskv = main.mskv
     # if hasattr(main, "mskc_hc"):
     #     mskc_hc = main.mskc_hc
     #     mskn_hc = main.mskn_hc
     #     mskv_hc = main.mskv_hc
     #     mskb_hc = main.mskb_hc
     #     lblc_hc = main.lblc_hc 
-    #     results = main.results
-                
+    # if hasattr(main, "results"):
+    #     results = main.results 
+        
 #%% Development ---------------------------------------------------------------
-
-    # # Parameters
-    # nbins = 128
-    # bdist_width = 0.5
-    # inset_ratio = "50%"
-
-    # # Get data
-    # area_bdist = binned_distribution(
-    #     results["dist"], y=results["area"], bin_width=bdist_width)
-    # int_bdist  = binned_distribution(
-    #     results["dist"], y=results["int" ], bin_width=bdist_width)
-
-    # # Initialize plot
-    # fig = plt.figure(figsize=(6, 9), constrained_layout=True)
-    # gs = fig.add_gridspec(3, 1)
-    # ax0 = fig.add_subplot(gs[0, 0])  # Distances
-    # ax1 = fig.add_subplot(gs[1, 0])  # Areas
-    # ax2 = fig.add_subplot(gs[2, 0])  # Intensities
     
-    # # Distance (ax0)
-    # ax0.hist(results["dist"], bins=nbins, color="lightgray") 
-    # ax0.set_title("Vesicle distance to cell junctions", loc="left")
-    # ax0.set_xlabel("Distance (µm)")
-    # ax0.set_ylabel("count")
-    
-    # # Distance inset (axi0)
-    # axi0 = inset_axes(
-    #     ax0, width="50%", height="50%", loc="upper right")
-    # axi0.hist(results["dist"], bins=nbins * 16, color="lightgray") 
-    # axi0.set_title("Distance (zoomed)", y=0.75)
-    # axi0.set_xlabel("Distance (µm)")
-    # axi0.set_ylabel("count")
-    # axi0.set_xlim(-0.1, 2.1)
-    
-    # # Areas (ax1)
-    # ax1.hist(results["area"], bins=nbins, color="lightgray") 
-    # ax1.set_title("Vesicle area", loc="left")
-    # ax1.set_xlabel("Area (µm²)")
-    # ax1.set_ylabel("count")
-    
-    # # Areas inset (axi1)
-    # axi1 = inset_axes(
-    #     ax1, width=inset_ratio, height=inset_ratio, loc="upper right")
-    # axi1.bar(area_bdist[:, 0], area_bdist[:, 1], color="lightgray")
-    # axi1.set_title("Areas acc. to distance", y=0.75)
-    # axi1.set_xlabel("Distance (µm)")
-    # axi1.set_ylabel("Area (µm²)")
-    
-    # # Intensities (ax2)
-    # ax2.hist(results["int" ], bins=nbins, color="lightgray")
-    # ax2.set_title("Vesicle mean intensity", loc="left")
-    # ax2.set_xlabel("Intensity (A.U.)")
-    # ax2.set_ylabel("count")
-    
-    # # Intensities (axi2)
-    # axi2 = inset_axes(
-    #     ax2, width=inset_ratio, height=inset_ratio, loc="upper right")
-    # axi2.bar(int_bdist[:, 0], int_bdist[:, 1], color="lightgray")
-    # axi2.set_title("Intensity acc. to distance", y=0.75)
-    # axi2.set_xlabel("Distance (µm)")
-    # axi2.set_ylabel("Intensity (A.U.)")    
+    # nY, nX = imgs.shape
+    # overlap = 256
+    # imgs0 = imgs[:, :nX // 2 + overlap]
+    # imgs1 = imgs[:, nX // 2 - overlap:]
+    # imgs2 = np.hstack((
+    #     imgs0[:, :nX // 2],
+    #     imgs1[:, overlap:],
+    #     ))
