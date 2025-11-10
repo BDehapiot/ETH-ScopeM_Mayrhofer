@@ -14,11 +14,11 @@ from bdtools.models.annotate import Annotate
 #%% Inputs(general) -----------------------------------------------------------
 
 # Procedure
-annotate = 0
-train = 1
+annotate = 1
+train = 0
 
 # Parameters
-mask_type = "vesicles"
+mask_type = "cells"
 
 # Paths
 train_path = Path(Path.cwd() / "data" / "train")

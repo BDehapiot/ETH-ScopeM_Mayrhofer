@@ -38,10 +38,10 @@ import gc
 #%% Inputs --------------------------------------------------------------------
 
 procedure = {
-    "downscale"  : 1,
-    "preprocess" : 1,
-    "predict"    : 1,
-    "process"    : 2,
+    "downscale"  : 0,
+    "preprocess" : 0,
+    "predict"    : 0,
+    "process"    : 0,
     "correct"    : 1,
     "analyse"    : 0,
     }
