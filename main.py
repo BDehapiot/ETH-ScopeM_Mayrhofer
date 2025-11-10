@@ -24,13 +24,9 @@ from scipy.ndimage import distance_transform_edt
 import napari
 from napari.layers.labels.labels import Labels
 
-# Qt
-from qtpy.QtGui import QFont
+# qt
 from qtpy.QtCore import QTimer
-from qtpy.QtWidgets import (
-    QWidget, QPushButton, QLabel,
-    QGroupBox, QVBoxLayout,
-    )
+from qtpy.QtWidgets import QWidget, QPushButton, QGroupBox, QVBoxLayout
 
 # matplot
 import matplotlib.pyplot as plt
@@ -42,10 +38,10 @@ import gc
 #%% Inputs --------------------------------------------------------------------
 
 procedure = {
-    "downscale"  : 0,
-    "preprocess" : 0,
+    "downscale"  : 1,
+    "preprocess" : 1,
     "predict"    : 1,
-    "process"    : 1,
+    "process"    : 2,
     "correct"    : 1,
     "analyse"    : 0,
     }
@@ -53,13 +49,14 @@ procedure = {
 parameters = {
     
     # Paths
-    # "img_name"  : "Ins1e_wt_1.7nm_00",
-    # "img_name"  : "Gigyf12d_ko_1.7nm_00",
-    "img_name"  : "Ins1e_wt_3.25nm_00",
-    "data_path" : Path("D:\local_Mayrhofer\data"),
+    # "img_name"    : "Ins1e_wt_1.7nm_00",
+    # "img_name"    : "Gigyf12d_ko_1.7nm_00",
+    "img_name"    : "Ins1e_wt_3.25nm_00",
+    "data_path"   : Path("D:\local_Mayrhofer\data"),
     
     # Downscale
-    "df" : 8,
+    "psize_ref"   : 1.7, # nm
+    "df_ref"      : 16,
     
     # Predict
     "model_types" : ["cells", "nuclei", "vesicles"],
@@ -73,7 +70,7 @@ parameters = {
     
     "mskc_params" : (0.5, 4096, 32),
     "mskn_params" : (0.5, 512, 32),
-    "mskv_params" : (0.25, 16, 4),
+    "mskv_params" : (0.25, 8, 4),
     
     }
 
@@ -86,7 +83,8 @@ class Main:
         # Fetch
         self.procedure  = procedure
         self.parameters = parameters
-        self.df = parameters["df"]
+        self.img_name = self.parameters["img_name"]
+        self.data_path = Path(self.parameters["data_path"] / self.img_name)
         
         # Run
         self.initialize()
@@ -101,19 +99,19 @@ class Main:
         
     def initialize(self):
         
-        # Paths
-        self.img_name = parameters["img_name"]
-        self.data_path = Path(parameters["data_path"] / self.img_name)
-        self.level_path = self.data_path / f"level-{parameters['df']}"
-        self.outputs_path = self.level_path / "outputs"
-        
-        # Variables
+        # Scaling variables
         parts = self.img_name.split("_")
         for part in parts:
             if "nm" in part:
-                self.pixel_size = float(part.replace("nm", ""))
-                self.pixel_size = self.pixel_size * self.df * 1e-3
+                self.psize_0 = float(part.replace("nm", ""))
+                rf = self.psize_0 / self.parameters["psize_ref"]
+                self.df = round(self.parameters["df_ref"] / rf, 3)
+                self.psize_1 = self.psize_0 * self.df
         
+        # Paths
+        self.level_path = self.data_path / f"level-{self.df}"
+        self.outputs_path = self.level_path / "outputs"
+
         # Files
         file_map = {
             
@@ -182,7 +180,7 @@ class Main:
             
             # Stich
             imgs_s = stich(imgs, mtds, scaling_coeff=1)
-            
+                        
             # Save
             with open(self.outputs_path / "mtds.pkl", "wb") as f:
                 pickle.dump(mtds, f)
@@ -206,20 +204,7 @@ class Main:
     def predict(self):
         
         self.initialize()
-        
-        # # Predict
-        # for m, model_type in enumerate(self.parameters["model_types"]):
-        #     prd_path = self.outputs_path / f"prd{model_type[0]}.tif"
-        #     if not prd_path.exists() or self.procedure["predict"] == 2:
-        #         if m == 0:
-        #             log_str = (f"predict() - {self.img_name} - df{self.df}")
-        #             print(log_str); print('-' * len(log_str))
-        #         prd = predict(self.imgs, model_type=model_type)
-        #         io.imsave(
-        #             self.outputs_path / f"prd{model_type[0]}.tif",
-        #             prd, check_contrast=False
-        #             )
-       
+               
         # Predict
         for m, model_type in enumerate(self.parameters["model_types"]):
             prd_path = self.outputs_path / f"prd{model_type[0]}.tif"
@@ -253,8 +238,6 @@ class Main:
                 gc.collect()
                 tf.keras.backend.clear_session()
                     
-        
-
 #%% Class(Main) : process() ---------------------------------------------------
 
     def process(self):
@@ -273,7 +256,7 @@ class Main:
             mskc = get_mask(self.prdc, *self.parameters["mskc_params"])
             mskn = get_mask(self.prdn, *self.parameters["mskn_params"])
             mskv = get_mask(self.prdv, *self.parameters["mskv_params"])
-            sync_masks(mskc, mskn, mskv)
+            # sync_masks(mskc, mskn, mskv)
             
             for msk in ["mskc", "mskn", "mskv"]:
                 msk_hc_path = self.outputs_path / f"{msk}_hc.tif"
@@ -294,7 +277,11 @@ class Main:
 #%% Class(Main) : Correct() ---------------------------------------------------
 
     def correct(self):
-        Correct(procedure=self.procedure, parameters=self.parameters)
+        Correct(
+            procedure=self.procedure, 
+            parameters=self.parameters,
+            df=self.df
+            )
 
 #%% Class(Main) : analyse() --------------------------------------------------- 
     
@@ -375,7 +362,7 @@ class Main:
         self.results = {
             "name"       : [],
             "df"         : [],
-            "pixel_size" : [],
+            "psize" : [],
             "label"      : [],
             "area"       : [], 
             "dist"       : [],
@@ -386,11 +373,13 @@ class Main:
             coords = props.coords
             self.results["name"      ].append(self.img_name)
             self.results["df"        ].append(self.df)
-            self.results["pixel_size"].append(self.pixel_size)
+            self.results["psize_0"].append(self.psize_0 * 1e-3)
+            self.results["psize_1"].append(self.psize_1 * 1e-3)
             self.results["label"     ].append(props.label)
-            self.results["area"      ].append(props.area * (self.pixel_size ** 2))
+            self.results["area"      ].append(
+                props.area * ((self.psize_1 * 1e-3) ** 2))
             self.results["dist"      ].append(
-                np.mean(edt[tuple(coords.T)]) * self.pixel_size)
+                np.mean(edt[tuple(coords.T)]) * self.psize)
             self.results["int"  ].append(np.mean(self.imgs[tuple(coords.T)]))
         
         # Plot
@@ -407,12 +396,12 @@ class Main:
 
 class Correct:
     
-    def __init__(self, procedure=None, parameters=None):
+    def __init__(self, procedure=None, parameters=None, df=None):
         
         # Fetch
         self.procedure  = procedure
         self.parameters = parameters
-        self.df = parameters["df"]
+        self.df = df
         
         # Timers
         self.next_brush_size_timer = QTimer()
@@ -433,7 +422,7 @@ class Correct:
         # Paths
         self.img_name = parameters["img_name"]
         self.data_path = Path(parameters["data_path"] / self.img_name)
-        self.level_path = self.data_path / f"level-{parameters['df']}"
+        self.level_path = self.data_path / f"level-{self.df}"
         self.outputs_path = self.level_path / "outputs"
               
         # Images
@@ -741,7 +730,12 @@ if __name__ == "__main__":
 #%% Analyse -------------------------------------------------------------------
         
     # # Fetch
-    # imgs = main.imgs
+    # psize_0 = main.psize_0
+    # psize_1 = main.psize_1
+    # df = main.df
+
+    # if hasattr(main, "imgs"):
+    #     imgs = main.imgs
     # if hasattr(main, "prdc"):
     #     prdc = main.prdc
     #     prdn = main.prdn

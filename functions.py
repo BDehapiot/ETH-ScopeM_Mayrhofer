@@ -16,7 +16,7 @@ from numpy.fft import fft2, ifft2, fftshift
 
 # skimage
 from skimage.filters import sobel
-from skimage.transform import downscale_local_mean
+from skimage.transform import downscale_local_mean, rescale
 from skimage.morphology import remove_small_objects, remove_small_holes
 
 #%% Function(s) ---------------------------------------------------------------
@@ -72,11 +72,14 @@ def downscale_images(data_path, df=16):
         img = io.imread(img_path)
             
         # Downscale image
-        img = downscale_local_mean(img, df).astype("uint16")
+        if abs(df - round(df)) < 1e-3:
+            img = downscale_local_mean(img, df)
+        else:
+            img = rescale(img, 1 / df, preserve_range=True)
 
         # Save downscaled image
         save_path = level_path / f"{img_path.stem}_level-{df}.tif"
-        io.imsave(save_path, img, check_contrast=False)
+        io.imsave(save_path, img.astype("uint16"), check_contrast=False)
         
     # Execute -----------------------------------------------------------------
     

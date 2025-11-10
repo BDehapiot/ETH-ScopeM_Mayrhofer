@@ -15,12 +15,13 @@ from bdtools.patch import extract_patches
 #%% Inputs --------------------------------------------------------------------
 
 # Parameters
-df = 16
-patch_size = 4000 // df
+df = 8.369
+patch_size = 250
 
 # Paths
 # img_name = "Ins1e_wt_1.7nm_00"
-img_name = "Gigyf12d_ko_1.7nm_00"
+# img_name = "Gigyf12d_ko_1.7nm_00"
+img_name = "Ins1e_wt_3.25nm_00"
 data_path = Path(f"D:\local_Mayrhofer\data\{img_name}")
 if df == 1:
     level_path = data_path

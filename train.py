@@ -18,13 +18,10 @@ annotate = 0
 train = 1
 
 # Parameters
-df = 16
 mask_type = "vesicles"
 
 # Paths
-img_name = "Ins1e_wt_1.7nm_00"
-data_path = Path(f"D:\local_Mayrhofer\data\{img_name}")
-train_path = Path(Path.cwd() / "data" / f"train_level-{df}")
+train_path = Path(Path.cwd() / "data" / "train")
 
 #%% Inputs(model) -------------------------------------------------------------
 
@@ -35,7 +32,7 @@ downscale_factor = 1
 
 # UNet train()
 preview = 0
-load_name = "model_250_normal_2000-500_1"
+load_name = "model-vesicles_250_normal_2000-500_1"
 
 # preprocess
 patch_size = 250
