@@ -14,11 +14,11 @@ from bdtools.models.annotate import Annotate
 #%% Inputs(general) -----------------------------------------------------------
 
 # Procedure
-annotate = 1
-train = 0
+annotate = 0
+train = 1
 
 # Parameters
-mask_type = "cells"
+mask_type = "nuclei"
 
 # Paths
 train_path = Path(Path.cwd() / "data" / "train")
@@ -32,7 +32,7 @@ downscale_factor = 1
 
 # UNet train()
 preview = 0
-load_name = "model-vesicles_250_normal_2000-500_1"
+load_name = ""
 
 # preprocess
 patch_size = 250
@@ -41,11 +41,11 @@ img_norm = "none"
 msk_type = "normal"
 
 # augment
-iterations = 2000
+iterations = 2500
 invert_p = 0.0
-gamma_p = 0
-gblur_p = 0
-noise_p = 0 
+gamma_p = 0.0
+gblur_p = 0.0
+noise_p = 0.0 
 flip_p = 0.5 
 distord_p = 0.5
 

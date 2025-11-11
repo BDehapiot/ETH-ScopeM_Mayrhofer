@@ -10,7 +10,7 @@ from pathlib import Path
 # functions
 from functions import (
     clear_directory,
-    downscale_images, load_images, custom_normalization,
+    rescale_images, load_images, custom_normalization,
     get_shift, stich, predict, get_mask, sync_masks,
     binned_distribution,
     )
@@ -38,10 +38,10 @@ import gc
 #%% Inputs --------------------------------------------------------------------
 
 procedure = {
-    "downscale"  : 0,
-    "preprocess" : 0,
-    "predict"    : 0,
-    "process"    : 0,
+    "rescale"    : 1,
+    "preprocess" : 1,
+    "predict"    : 1,
+    "process"    : 1,
     "correct"    : 1,
     "analyse"    : 0,
     }
@@ -54,9 +54,8 @@ parameters = {
     "img_name"    : "Ins1e_wt_3.25nm_00",
     "data_path"   : Path("D:\local_Mayrhofer\data"),
     
-    # Downscale
-    "psize_ref"   : 1.7, # nm
-    "df_ref"      : 16,
+    # Rescale
+    "psize_ref"      : 27.2,
     
     # Predict
     "model_types" : ["cells", "nuclei", "vesicles"],
@@ -88,7 +87,7 @@ class Main:
         
         # Run
         self.initialize()
-        if self.procedure["downscale" ]: self.downscale() 
+        if self.procedure["rescale"   ]: self.rescale() 
         if self.procedure["preprocess"]: self.preprocess() 
         if self.procedure["predict"   ]: self.predict()
         if self.procedure["process"   ]: self.process()
@@ -103,14 +102,13 @@ class Main:
         parts = self.img_name.split("_")
         for part in parts:
             if "nm" in part:
-                self.psize_0 = float(part.replace("nm", ""))
-                rf = self.psize_0 / self.parameters["psize_ref"]
-                self.df = round(self.parameters["df_ref"] / rf, 3)
-                self.psize_1 = self.psize_0 * self.df
+                self.psize_raw = float(part.replace("nm", ""))
+                self.rf = self.psize_raw / self.parameters["psize_ref"]
+                self.rf = round(self.rf, 4)
         
         # Paths
-        self.level_path = self.data_path / f"level-{self.df}"
-        self.outputs_path = self.level_path / "outputs"
+        self.rescale_path = self.data_path / "rescale"
+        self.outputs_path = self.rescale_path / "outputs"
 
         # Files
         file_map = {
@@ -146,17 +144,17 @@ class Main:
             if path.is_file():
                 setattr(self, attr, loader(path))        
                 
-#%% Class(Main) : downscale() -------------------------------------------------
+#%% Class(Main) : rescale() ---------------------------------------------------
 
-    def downscale(self):
+    def rescale(self):
 
         self.initialize()
         
-        if not self.level_path.exists() or self.procedure["downscale"] == 2:
-            log_str = f"\ndownscale() - {self.img_name} - df{self.df}"
+        if not self.rescale_path.exists() or self.procedure["rescale"] == 2:
+            log_str = f"\nrescale() - {self.img_name} - rf{self.rf}"
             print(log_str); print('-' * len(log_str))
-            clear_directory(self.level_path)        
-            downscale_images(self.data_path, df=self.df)
+            clear_directory(self.rescale_path)        
+            rescale_images(self.data_path, rf=self.rf)
 
 #%% Class(Main) : preprocess() ------------------------------------------------
 
@@ -170,7 +168,7 @@ class Main:
             self.outputs_path.mkdir(parents=True, exist_ok=True)
             
             # Load images
-            imgs, mtds = load_images(self.data_path, df=self.df)
+            imgs, mtds = load_images(self.data_path, rf=self.rf)
                 
             # Get shifts
             mtds = get_shift(imgs, mtds)
@@ -192,15 +190,13 @@ class Main:
         self.initialize()
         
         if not self.outputs_path.exists() or self.procedure["preprocess"] == 2:
-            log_str = f"\npreprocess() - {self.img_name} - df{self.df}"
+            log_str = f"\npreprocess() - {self.img_name} - rf{self.rf}"
             print(log_str); print('-' * len(log_str))
             clear_directory(self.outputs_path)
             _preprocess()  
                         
 #%% Class(Main) : predict() ---------------------------------------------------
         
-
-
     def predict(self):
         
         self.initialize()
@@ -209,34 +205,14 @@ class Main:
         for m, model_type in enumerate(self.parameters["model_types"]):
             prd_path = self.outputs_path / f"prd{model_type[0]}.tif"
             if not prd_path.exists() or self.procedure["predict"] == 2:
-                
                 if m == 0:
-                    log_str = (f"predict() - {self.img_name} - df{self.df}")
+                    log_str = (f"predict() - {self.img_name} - rf{self.rf}")
                     print(log_str); print('-' * len(log_str))
-                
-                if self.img_name == "Ins1e_wt_3.25nm_00":
-                    nY, nX = self.imgs.shape
-                    overlap = 256
-                    imgs0 = self.imgs[:, :nX // 2 + overlap]
-                    imgs1 = self.imgs[:, nX // 2 - overlap:]
-                    prd0 = predict(imgs0, model_type=model_type)
-                    prd1 = predict(imgs1, model_type=model_type)
-                    prd = np.hstack((
-                        prd0[:, :nX // 2],
-                        prd1[:, overlap:],
-                        ))
-                                        
-                else:
-                    prd = predict(self.imgs, model_type=model_type)
-                
+                prd = predict(self.imgs, model_type=model_type)
                 io.imsave(
                     self.outputs_path / f"prd{model_type[0]}.tif",
                     prd, check_contrast=False
-                    )
-                
-                del prd, prd0, prd1, imgs0, imgs1
-                gc.collect()
-                tf.keras.backend.clear_session()
+                    )              
                     
 #%% Class(Main) : process() ---------------------------------------------------
 
@@ -247,7 +223,7 @@ class Main:
         # Get masks        
         msk_path = self.outputs_path / "mskc.tif"
         if not msk_path.exists() or self.procedure["process"] == 2:
-            log_str = f"process() - {self.img_name} - df{self.df}"
+            log_str = f"process() - {self.img_name} - rf{self.rf}"
             print(log_str); print('-' * len(log_str))
             
             t0 = time.time()
@@ -256,7 +232,6 @@ class Main:
             mskc = get_mask(self.prdc, *self.parameters["mskc_params"])
             mskn = get_mask(self.prdn, *self.parameters["mskn_params"])
             mskv = get_mask(self.prdv, *self.parameters["mskv_params"])
-            # sync_masks(mskc, mskn, mskv)
             
             for msk in ["mskc", "mskn", "mskv"]:
                 msk_hc_path = self.outputs_path / f"{msk}_hc.tif"
@@ -277,11 +252,7 @@ class Main:
 #%% Class(Main) : Correct() ---------------------------------------------------
 
     def correct(self):
-        Correct(
-            procedure=self.procedure, 
-            parameters=self.parameters,
-            df=self.df
-            )
+        Correct(procedure=self.procedure, parameters=self.parameters)
 
 #%% Class(Main) : analyse() --------------------------------------------------- 
     
@@ -396,12 +367,11 @@ class Main:
 
 class Correct:
     
-    def __init__(self, procedure=None, parameters=None, df=None):
+    def __init__(self, procedure=None, parameters=None):
         
         # Fetch
         self.procedure  = procedure
         self.parameters = parameters
-        self.df = df
         
         # Timers
         self.next_brush_size_timer = QTimer()
@@ -422,8 +392,8 @@ class Correct:
         # Paths
         self.img_name = parameters["img_name"]
         self.data_path = Path(parameters["data_path"] / self.img_name)
-        self.level_path = self.data_path / f"level-{self.df}"
-        self.outputs_path = self.level_path / "outputs"
+        self.rescale_path = self.data_path / "rescale"
+        self.outputs_path = self.rescale_path / "outputs"
               
         # Images
         filemap = {
@@ -721,6 +691,7 @@ class Correct:
                 layer.brush_size = 20
 
         self.set_active()
+        self.update()
         
 #%% Execute -------------------------------------------------------------------
 
@@ -729,10 +700,9 @@ if __name__ == "__main__":
     
 #%% Analyse -------------------------------------------------------------------
         
-    # # Fetch
-    # psize_0 = main.psize_0
-    # psize_1 = main.psize_1
-    # df = main.df
+    # Fetch
+    psize_raw = main.psize_raw
+    rf = main.rf
 
     # if hasattr(main, "imgs"):
     #     imgs = main.imgs

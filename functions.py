@@ -60,41 +60,38 @@ def binned_distribution(x, y=None, bin_width=10):
                 distribution.append((bin_center, np.nan))
     return np.stack(distribution)
 
-#%% Function : downscale_images() ---------------------------------------------
+#%% Function : rescale_images() -----------------------------------------------
 
-def downscale_images(data_path, df=16):
+def rescale_images(data_path, rf=0.0625):
     
     # Nested function(s) ------------------------------------------------------
         
-    def _downscale_images(img_path, level_path, df=16):
+    def _rescale_images(img_path, level_path, rf=0.0625):
         
         # Load image
         img = io.imread(img_path)
             
-        # Downscale image
-        if abs(df - round(df)) < 1e-3:
-            img = downscale_local_mean(img, df)
-        else:
-            img = rescale(img, 1 / df, preserve_range=True)
+        # Rescale image
+        img = rescale(img, rf, preserve_range=True)
 
         # Save downscaled image
-        save_path = level_path / f"{img_path.stem}_level-{df}.tif"
+        save_path = level_path / f"{img_path.stem}_rescale-{rf}.tif"
         io.imsave(save_path, img.astype("uint16"), check_contrast=False)
         
     # Execute -----------------------------------------------------------------
     
     # Setup level directory
-    level_path = data_path / f"level-{df}"
-    if not level_path.exists():
-        level_path.mkdir(parents=True, exist_ok=True)
+    rescale_path = data_path / "rescale"
+    if not rescale_path.exists():
+        rescale_path.mkdir(parents=True, exist_ok=True)
 
     t0 = time.time()
-    print("downscale_images() :", end=" ", flush=True)
+    print("rescale_images() :", end=" ", flush=True)
     
-    # Load & downscale images
+    # Load & rescale images
     img_paths = list(data_path.glob("*.tif"))
     Parallel(n_jobs=-1)(
-        delayed(_downscale_images)(img_path, level_path, df=df)
+        delayed(_rescale_images)(img_path, rescale_path, rf=rf)
             for img_path in img_paths
             )
     
@@ -103,13 +100,10 @@ def downscale_images(data_path, df=16):
 
 #%% Function : load_images() --------------------------------------------------
 
-def load_images(data_path, df=16):
+def load_images(data_path, rf=0.0625):
 
-    if df == 1:
-        level_path = data_path
-    else:
-        level_path = data_path / f"level-{df}"
-    img_paths = list(level_path.glob(f"*level-{df}.tif"))
+    rescale_path = data_path / "rescale"
+    img_paths = list(rescale_path.glob(f"*rescale-{rf}.tif"))
     
     t0 = time.time()
     print("load_images() :", end=" ", flush=True)
