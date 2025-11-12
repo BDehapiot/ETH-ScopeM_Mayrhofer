@@ -32,16 +32,13 @@ from qtpy.QtWidgets import QWidget, QPushButton, QGroupBox, QVBoxLayout
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
-import tensorflow as tf
-import gc
-
 #%% Inputs --------------------------------------------------------------------
 
 procedure = {
     "rescale"    : 1,
     "preprocess" : 1,
-    "predict"    : 1,
-    "process"    : 1,
+    "predict"    : 2,
+    "process"    : 2,
     "correct"    : 1,
     "analyse"    : 0,
     }
@@ -50,8 +47,8 @@ parameters = {
     
     # Paths
     # "img_name"    : "Ins1e_wt_1.7nm_00",
-    # "img_name"    : "Gigyf12d_ko_1.7nm_00",
-    "img_name"    : "Ins1e_wt_3.25nm_00",
+    "img_name"    : "Gigyf12d_ko_1.7nm_00",
+    # "img_name"    : "Ins1e_wt_3.25nm_00",
     "data_path"   : Path("D:\local_Mayrhofer\data"),
     
     # Rescale
@@ -722,14 +719,3 @@ if __name__ == "__main__":
     #     lblc_hc = main.lblc_hc 
     # if hasattr(main, "results"):
     #     results = main.results 
-        
-#%% Development ---------------------------------------------------------------
-    
-    # nY, nX = imgs.shape
-    # overlap = 256
-    # imgs0 = imgs[:, :nX // 2 + overlap]
-    # imgs1 = imgs[:, nX // 2 - overlap:]
-    # imgs2 = np.hstack((
-    #     imgs0[:, :nX // 2],
-    #     imgs1[:, overlap:],
-    #     ))

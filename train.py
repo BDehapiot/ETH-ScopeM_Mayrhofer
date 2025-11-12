@@ -18,7 +18,7 @@ annotate = 0
 train = 1
 
 # Parameters
-mask_type = "nuclei"
+mask_type = "vesicles"
 
 # Paths
 train_path = Path(Path.cwd() / "data" / "train")
