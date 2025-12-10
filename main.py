@@ -139,9 +139,14 @@ class Main:
 
 if __name__ == "__main__":
     main = Main(procedure=procedure, parameters=parameters)
+    
+#%% 
+
+    # Fetch
     imgs = main.imgs
     mtds = main.mtds
     imgs_s = main.imgs_s
+    imgs_s[imgs_s == 0] = 50
     
     # Display
     import napari

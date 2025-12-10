@@ -176,7 +176,7 @@ def stich(imgs, mtds, scaling_coeff=1):
     tdy_mode = get_mode(tdys) * scaling_coeff
     
     # Stich data
-    imgs_s = np.zeros((nR * nY, nC * nX), dtype="float32") 
+    imgs_s = np.zeros((nR * nY + nY, nC * nX + nX), dtype="float32") 
     for i, mtd in enumerate(mtds):
         row, col = mtd["row"], mtd["col"]
         tdy = row * tdy_mode
@@ -191,3 +191,48 @@ def stich(imgs, mtds, scaling_coeff=1):
     imgs_s = trim_images(imgs_s)
         
     return imgs_s
+
+#%% Execute -------------------------------------------------------------------
+
+if __name__ == "__main__":
+    
+    # imports 
+    import napari
+    from pathlib import Path
+    
+    # Paths
+    dataset = "gigyf12_dko_1.7nm"
+    data_path = Path(
+        rf"\\scopem-idadata.ethz.ch\BDehapiot\remote_Mayrhofer\data\{dataset}")
+    rsc_path = data_path / "rsc"
+    
+    # Load
+    imgs, mtds = load_images(rsc_path)
+    
+    # Normalize
+    imgs = normalize_images(imgs)
+    
+    # # Display
+    # vwr = napari.Viewer()
+    # vwr.add_image(np.stack(imgs))
+    
+#%%
+    
+    nT = 20
+    
+    rows = [m["row"] for m in mtds]
+    cols = [m["col"] for m in mtds]
+    minR, maxR = min(rows), max(rows)
+    minC, maxC = min(cols), max(cols)
+    
+    r0s = np.arange(minR, maxR, nT)
+    r1s = r0s + (nT - 1)
+    if r1s[-1] > maxR:
+        r1s[-1] = maxR
+        
+    c0s = np.arange(minC, maxC, nT)
+    c1s = c0s + (nT - 1)
+    if c1s[-1] > maxC:
+        c1s[-1] = maxC
+    
+    
