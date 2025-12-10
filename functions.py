@@ -1,10 +1,12 @@
 #%% Imports -------------------------------------------------------------------
 
 from skimage import io
+from pathlib import Path
 from joblib import Parallel, delayed
 
 # bdtools
 from bdtools.norm import norm_pct
+from bdtools.models.unet import UNet
 
 # numpy
 import numpy as np
@@ -13,6 +15,7 @@ from numpy.fft import fft2, ifft2, fftshift
 # skimage
 from skimage.filters import sobel
 from skimage.transform import rescale
+from skimage.morphology import remove_small_objects, remove_small_holes
 
 #%% Function(s) ---------------------------------------------------------------
                 
@@ -32,12 +35,6 @@ def rescale_image(img_path, rf):
     return img.astype("uint16")
 
 #%% Function(s) : prepare() ---------------------------------------------------
-
-def normalize_images(imgs):
-    imgs = np.stack(imgs)
-    imgs = imgs.astype("float32")
-    imgs = norm_pct(imgs, pct_low=0.1, pct_high=99.9, mask=imgs > 0)
-    return (imgs * 255).astype("uint8")
 
 def load_images(rsc_path):
 
@@ -69,6 +66,40 @@ def load_images(rsc_path):
             
     return imgs, mtds
 
+def normalize_images(imgs):
+    imgs = np.stack(imgs)
+    imgs = imgs.astype("float32")
+    imgs = norm_pct(imgs, pct_low=0.1, pct_high=99.9, mask=imgs > 0)
+    return (imgs * 255).astype("uint8")
+
+def split_images(imgs, mtds, ntiles=24):
+    
+    # Get tile coordinates
+    rows = [m["row"] for m in mtds]
+    cols = [m["col"] for m in mtds]
+    minR, maxR = min(rows), max(rows)
+    minC, maxC = min(cols), max(cols)
+    r0s = np.arange(minR, maxR, ntiles)
+    r1s = r0s + (ntiles - 1)
+    if r1s[-1] > maxR: r1s[-1] = maxR
+    c0s = np.arange(minC, maxC, ntiles)
+    c1s = c0s + (ntiles - 1)
+    if c1s[-1] > maxC: c1s[-1] = maxC
+    
+    # Split images
+    split_imgs, split_mtds = [], []
+    for r0, r1 in zip(r0s, r1s):
+        for c0, c1 in zip(c0s, c1s):
+            tmp_imgs, tmp_mtds = [], []
+            for i, (img, mtd) in enumerate(zip(imgs, mtds)):
+                if r0 <= mtd["row"] <= r1 and c0 <= mtd["col"] <= c1:
+                    tmp_imgs.append(imgs[i])
+                    tmp_mtds.append(mtds[i])
+            split_imgs.append(tmp_imgs)
+            split_mtds.append(tmp_mtds)
+    
+    return split_imgs, split_mtds
+    
 #%% Function(s) : prepare() - get_shifts() ------------------------------------
 
 def get_shifts(imgs, mtds):
@@ -121,11 +152,13 @@ def get_shifts(imgs, mtds):
 
     # Get shifts
 
+    idxs = np.array([m["idx"] for m in mtds])
+
     for r in range(nR + 1):
         mtdR, prpR = mtds_2D[r, :], prps_2D[r, :]
         for c in range(nC + 1):
-            if mtdR[c] is not None:
-                idx = mtdR[c]["idx"]
+            if mtdR[c] is not None:             
+                idx = int(np.flatnonzero(idxs == mtdR[c]["idx"])[0])
                 if mtdR[c - 1] is not None:
                     dy, dx, scr = get_shift(prpR[c - 1], prpR[c])
                     mtds[idx]["lshift"] = (dy, dx, scr) 
@@ -136,7 +169,7 @@ def get_shifts(imgs, mtds):
         mtdC, prpC = mtds_2D[:, c], prps_2D[:, c]
         for r in range(nR + 1):
             if mtdC[r] is not None:
-                idx = mtdC[r]["idx"]
+                idx = int(np.flatnonzero(idxs == mtdC[r]["idx"])[0])
                 if mtdC[r - 1] is not None:
                     dy, dx, scr = get_shift(prpC[r - 1], prpC[r])
                     mtds[idx]["tshift"] = (dy, dx, scr)
@@ -147,7 +180,7 @@ def get_shifts(imgs, mtds):
 
 #%% Function(s) : prepare() - stich() -----------------------------------------
 
-def stich(imgs, mtds, scaling_coeff=1):
+def stich_images(imgs, mtds, scaling_coeff=1):
     
     # Nested function(s) ------------------------------------------------------
     
@@ -176,7 +209,7 @@ def stich(imgs, mtds, scaling_coeff=1):
     tdy_mode = get_mode(tdys) * scaling_coeff
     
     # Stich data
-    imgs_s = np.zeros((nR * nY + nY, nC * nX + nX), dtype="float32") 
+    imgs_s = np.zeros((nR * nY + nY, nC * nX + nX), dtype="uint8") 
     for i, mtd in enumerate(mtds):
         row, col = mtd["row"], mtd["col"]
         tdy = row * tdy_mode
@@ -192,13 +225,31 @@ def stich(imgs, mtds, scaling_coeff=1):
         
     return imgs_s
 
+#%% Function(s) : predict() ---------------------------------------------------
+
+def predict_images(img, model_type="cells"):
+    img = img.astype("float32") / 255
+    load_name = list(Path.cwd().glob(f"model-{model_type}*"))[0]
+    unet = UNet(load_name=load_name)
+    prd = unet.predict(img, verbose=0)
+    return (prd * 255).astype("uint8")
+
+#%% Function(s) : process() ---------------------------------------------------
+
+def get_mask(prd, thresh, min_size_o, min_size_h):
+    msk = prd > thresh * 255
+    msk = remove_small_objects(msk, min_size=min_size_o)
+    msk = remove_small_holes(msk, area_threshold=min_size_h)
+    return msk.astype("uint8")
+
+def sync_masks(mskc, mskn, mskv):
+    mskn[mskc == 0] = 0
+    mskv[mskc == 0] = 0
+    mskv[mskn > 0 ] = 0
+
 #%% Execute -------------------------------------------------------------------
 
 if __name__ == "__main__":
-    
-    # imports 
-    import napari
-    from pathlib import Path
     
     # Paths
     dataset = "gigyf12_dko_1.7nm"
@@ -212,27 +263,24 @@ if __name__ == "__main__":
     # Normalize
     imgs = normalize_images(imgs)
     
-    # # Display
-    # vwr = napari.Viewer()
-    # vwr.add_image(np.stack(imgs))
+    # Split
+    imgs, mtds = split_images(imgs, mtds, ntiles=24)
     
+    # Shift & stich
+    imgs_s = []
+    for i in range(len(imgs)):
+        mtds[i] = get_shifts(imgs[i], mtds[i])
+        imgs_s.append(stich_images(imgs[i], mtds[i]))     
+        
 #%%
     
-    nT = 20
+    # Imports
+    import napari
+
+    # Predict
+    prd = predict_images(imgs_s[0], model_type="vesicles")
     
-    rows = [m["row"] for m in mtds]
-    cols = [m["col"] for m in mtds]
-    minR, maxR = min(rows), max(rows)
-    minC, maxC = min(cols), max(cols)
-    
-    r0s = np.arange(minR, maxR, nT)
-    r1s = r0s + (nT - 1)
-    if r1s[-1] > maxR:
-        r1s[-1] = maxR
-        
-    c0s = np.arange(minC, maxC, nT)
-    c1s = c0s + (nT - 1)
-    if c1s[-1] > maxC:
-        c1s[-1] = maxC
-    
+    # Display
+    vwr = napari.Viewer()
+    vwr.add_image(prd)
     
