@@ -74,15 +74,11 @@ class Main:
             if not isinstance(val, dict):
                 setattr(self, key, val)
                 
-        self.rsc_path = self.data_path / "rsc"
-        self.prp_path = self.data_path / "prp"
-        self.prd_path = self.data_path / "prd"
-        self.prc_path = self.data_path / "prc"
-        self.img_paths = list(self.data_path.glob("*.tif")) 
-        if self.prp_path.exists():
-            self.prp_paths = list(self.prp_path.glob("*.tif"))
-        if self.prd_path.exists():
-            self.prd_paths = list(self.prd_path.glob("*.tif"))
+        self.raw_img_paths = list(self.data_path.glob("*.tif")) 
+        for tag in ["rsc", "prp", "prd", "prc"]:
+            setattr(self, f"{tag}_path", self.data_path / f"{tag}") 
+            img_paths = list(getattr(self, f"{tag}_path").glob("*.tif"))
+            setattr(self, f"{tag}_img_paths", img_paths) 
         
 #%% Class(Main) : rescale() ---------------------------------------------------
 
@@ -93,7 +89,7 @@ class Main:
         # Setup "rsc" directory
         if self.rsc_path.exists():
             shutil.rmtree(self.rsc_path)
-        self.rsc_path.mkdir(parents=True)
+        self.rsc_path.mkdir(parents=True, exist_ok=True)
             
         # Get rescaling factor
         rf = get_rescaling_factor(self.data_path.name, self.pix_ref)
@@ -116,8 +112,8 @@ class Main:
         t0 = time.time()
         print(" - save    : ", end="", flush=True)
         
-        for i, img_path in enumerate(self.img_paths):
-            save_path = self.rsc_path / f"{img_path.stem}_rsc.tif"
+        for i, path in enumerate(self.raw_img_paths):
+            save_path = self.rsc_path / f"{path.stem}_rsc.tif"
             io.imsave(save_path, imgs[i], check_contrast=False)
         
         t1 = time.time()
@@ -132,7 +128,7 @@ class Main:
         # Setup "prp" directory
         if self.prp_path.exists():
             shutil.rmtree(self.prp_path)
-        self.prp_path.mkdir(parents=True)
+        self.prp_path.mkdir(parents=True, exist_ok=True)
         
         # Prepare -------------------------------------------------------------
         
@@ -185,44 +181,44 @@ class Main:
         # Setup "prd" directory
         if self.prd_path.exists():
             shutil.rmtree(self.prd_path)
-        self.prd_path.mkdir(parents=True)
+        self.prd_path.mkdir(parents=True, exist_ok=True)
         
         # Predict & save ------------------------------------------------------
 
         t0 = time.time()
         print(" - predict & save : ", end="", flush=True)
 
-        for i, prp_path in enumerate(self.prp_paths):
+        for i, path in enumerate(self.prp_paths):
             for model_type in ["cells", "nuclei", "vesicles"]:
                 prd = predict_images(
-                    io.imread(prp_path), model_type=model_type)
+                    io.imread(path), model_type=model_type)
                 save_path = self.prd_path / f"prd_{model_type}_{i:02d}.tif"
                 io.imsave(save_path, prd, check_contrast=False)
 
         t1 = time.time()
         print(f"{t1 - t0:.3f}s")
         
-#%% Class(Main) : process() ---------------------------------------------------
+#%% Class(Main) : mask() ---------------------------------------------------
         
-    def process(self):
+    def mask(self):
         
-        print(f"process() - {self.data_path.name}")
+        print(f"mask() - {self.data_path.name}")
         
-        # Setup "prc" directory
-        if self.prc_path.exists():
-            shutil.rmtree(self.prc_path)
-        self.prc_path.mkdir(parents=True)
+        # Setup "msk" directory
+        if self.msk_path.exists():
+            shutil.rmtree(self.msk_path)
+        self.msk_path.mkdir(parents=True, exist_ok=True)
         
-        # Process & save ------------------------------------------------------
+        # Mask & save ---------------------------------------------------------
         
         t0 = time.time()
-        print(" - process & save : ", end="", flush=True)
+        print(" - mask & save : ", end="", flush=True)
         
-        for prd_path in self.prd_paths:
-            model_type = prd_path.stem.split("_")[-2]
-            prd = io.imread(prd_path)
+        for path in self.prd_paths:
+            model_type = path.stem.split("_")[-2]
+            prd = io.imread(path)
             msk = get_mask(prd, *self.parameters["mask_params"][model_type])
-            save_path = self.prc_path / str(prd_path.name).replace("prd", "msk")
+            save_path = self.msk_path / str(path.name).replace("prd", "msk")
             io.imsave(save_path, msk, check_contrast=False)
             
         t1 = time.time()
