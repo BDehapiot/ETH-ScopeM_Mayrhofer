@@ -2,13 +2,13 @@
 
 import numpy as np
 from skimage import io
-from pathlib import Path
+from functools import partial
 
 # functions
 from functions import sync_masks
 
 # config
-from config import layer_config
+from config import label_config, layer_config
 
 # Skimage
 from skimage.morphology import skeletonize
@@ -33,10 +33,10 @@ class Correct:
         self.parameters = parameters
 
         # Timers
-        # self.next_brush_size_timer = QTimer()
-        # self.next_brush_size_timer.timeout.connect(self.next_brush_size)
-        # self.prev_brush_size_timer = QTimer()
-        # self.prev_brush_size_timer.timeout.connect(self.prev_brush_size)  
+        self.next_brush_size_timer = QTimer()
+        self.next_brush_size_timer.timeout.connect(self.next_brush_size)
+        self.prev_brush_size_timer = QTimer()
+        self.prev_brush_size_timer.timeout.connect(self.prev_brush_size)  
         
         # Execute
         if self.procedure["correct"]:
@@ -44,18 +44,20 @@ class Correct:
             self.init_viewer()
             self.init_view()
             self.init_layers()
+            self.update()
             
 #%% Class(Correct) : function(s) ----------------------------------------------
         
     def change_view(self, direction):
-        if direction == "next":
-            if self.view < self.nviews - 1:
-                self.view += 1
         if direction == "prev":
             if self.view > 0:
                 self.view -= 1
+        if direction == "next":
+            if self.view < self.nviews - 1:
+                self.view += 1
         self.update_views()
         self.update_layers()
+        self.update()
         self.vwr.reset_view()
         
     def paint(self):
@@ -79,9 +81,23 @@ class Correct:
     
     def set_label(self, value=None):
         if value is None:
-            self.vwr.layers[self.active].selected_label = self.labels[self.active]
+            self.vwr.layers[self.active].selected_label = label_config[self.active]
         else:
             self.vwr.layers[self.active].selected_label = value
+            
+    def correct_mask(self, target):
+        self.active = target
+        for name in self.vwr.layers:
+            name = str(name)
+            if name in ["prp", self.active]:
+                self.vwr.layers[name].visible = 1
+            else:
+                self.vwr.layers[name].visible = 0
+        if target == "mskb":
+            self.vwr.layers["mskl"].visible = 1
+        self.set_active()
+        self.set_label()
+        self.paint()
 
 #%% Class(Correct) : initialize() ---------------------------------------------
 
@@ -89,12 +105,7 @@ class Correct:
         
         self.view = 0
         self.active = "prp"
-        self.labels = {
-            "prp"  : 1,
-            "prdc" : 1, "prdn" : 1, "prdv" : 1,
-            "mskc" : 1, "mskn" : 2, "mskv" : 6, "mskb" : 231, "mskl" : 1,
-            }
-        
+
         for key, val in self.parameters.items():
             if not isinstance(val, dict):
                 setattr(self, key, val)
@@ -123,7 +134,7 @@ class Correct:
             setattr(self, f"btn_{tag}", QPushButton(f"{tag}. view"))
             slc_group_layout.addWidget(getattr(self, f"btn_{tag}"))
             getattr(self, f"btn_{tag}").clicked.connect(
-                lambda: self.change_view(tag))
+                partial(self.change_view, tag))
         
         # Create "action" menu
         act_group_box = QGroupBox("action")
@@ -133,13 +144,13 @@ class Correct:
                 setattr(self, f"btn_{tag0}", QPushButton(f"{tag0}"))
                 act_group_layout.addWidget(getattr(self, f"btn_{tag0}"))
                 getattr(self, f"btn_{tag0}").clicked.connect(
-                    lambda: self.update())
+                    partial(self.update))
             else:
                 for tag1 in ["cells", "nuclei", "vesicles", "bounds"]:
                     setattr(self, f"btn_{tag0}{tag1[0]}", QPushButton(f"{tag0} {tag1}"))
                     act_group_layout.addWidget(getattr(self, f"btn_{tag0}{tag1[0]}"))
                     getattr(self, f"btn_{tag0}{tag1[0]}").clicked.connect(
-                        lambda: self.correct_mask(f"{tag0}{tag1[0]}"))
+                        partial(self.correct_mask, f"msk{tag1[0]}"))
         
         # Create layout
         self.layout = QVBoxLayout()
@@ -155,6 +166,51 @@ class Correct:
             self.widget, area="right", name="Painter")    
         
         # Shortcuts -----------------------------------------------------------
+
+        @self.vwr.bind_key("PageDown", overwrite=True)
+        def prev_view_key(viewer):
+            self.change_view("prev")
+        
+        @self.vwr.bind_key("PageUp", overwrite=True)
+        def next_view_key(viewer):
+            self.change_view("next")
+        
+        @self.vwr.bind_key("Right", overwrite=True)
+        def next_brush_size_key(viewer):
+            self.next_brush_size() 
+            self.next_brush_size_timer.start(30) 
+            yield
+            self.next_brush_size_timer.stop()
+            
+        @self.vwr.bind_key("Left", overwrite=True)
+        def prev_brush_size_key(viewer):
+            self.prev_brush_size() 
+            self.prev_brush_size_timer.start(30) 
+            yield
+            self.prev_brush_size_timer.stop()
+            
+        @Labels.bind_key("Enter", overwrite=True)
+        def update_key(viewer):
+            self.update() 
+            
+        @self.vwr.mouse_drag_callbacks.append
+        def mouse_actions(vwr, event):
+            if "Control" in event.modifiers:
+                if event.button == 1:
+                    self.fill()
+                    yield
+                    self.paint()     
+                if event.button == 2:
+                    self.set_label(0)
+                    self.fill()
+                    yield
+                    self.set_label()
+                    self.paint()   
+            else:
+                if event.button == 2:
+                    self.erase()
+                    yield
+                    self.paint()
 
 #%% Class(Correct) : view -----------------------------------------------------
 
@@ -203,10 +259,8 @@ class Correct:
                         self, f"msk{tag1[0]}", 
                         getattr(self, f"{tag0}s")[self.view][tag1],
                         )
-
-
-                
-#%% Class(Correct) : init_layers() --------------------------------------------
+     
+#%% Class(Correct) : layers ---------------------------------------------------
 
     def init_layers(self):  
         
@@ -219,14 +273,15 @@ class Correct:
             elif tag0 == "prd":
                 for tag1 in ["cells", "nuclei", "vesicles"]:
                     self.vwr.add_image(
-                        getattr(self, f"{tag0}{tag1[0]}"), 
+                        getattr(self, f"{tag0}{tag1[0]}"),
                         **layer_config[f"{tag0}{tag1[0]}"]
                         ) 
             elif tag0 == "msk":
                 for tag1 in ["cells", "nuclei", "vesicles", "bounds", "labels"]:
-                    self.vwr.add_image(
-                        getattr(self, f"{tag0}{tag1[0]}") * self.labels[f"{tag0}{tag1[0]}"], 
-                        **layer_config[f"{tag0}{tag1[0]}"]
+                    self.vwr.add_labels(
+                        getattr(self, f"{tag0}{tag1[0]}") 
+                        * label_config[f"{tag0}{tag1[0]}"], 
+                        **layer_config[f"{tag0}{tag1[0]}"],
                         ) 
 
         # Set default brush size
@@ -234,6 +289,7 @@ class Correct:
             if layer.__class__.__name__ == "Labels":
                 layer.brush_size = 20
 
+        self.vwr.reset_view()
         self.set_active()
         
     def update_layers(self):
@@ -241,22 +297,61 @@ class Correct:
         for tag0 in ["prp", "prd", "msk"]:
             if tag0 == "prp":
                 self.vwr.layers["prp"].data = self.prp
-            
-        
-        self.vwr.layers["prp" ].data = self.prp
-        self.vwr.layers["prdc"].data = self.prdc
-        self.vwr.layers["prdn"].data = self.prdn
-        self.vwr.layers["prdv"].data = self.prdv
-        self.vwr.layers["mskl"].data = self.mskl
-        self.vwr.layers["mskc"].data = self.mskc * self.labels["mskc"]
-        self.vwr.layers["mskn"].data = self.mskn * self.labels["mskn"]
-        self.vwr.layers["mskv"].data = self.mskv * self.labels["mskv"]
-        self.vwr.layers["mskb"].data = self.mskb * self.labels["mskb"]
-        
-        
-        pass
-        
+            elif tag0 == "prd":
+                for tag1 in ["cells", "nuclei", "vesicles"]:
+                    self.vwr.layers[f"{tag0}{tag1[0]}"].data = (
+                        getattr(self, f"{tag0}{tag1[0]}"))
+            elif tag0 == "msk":
+                for tag1 in ["cells", "nuclei", "vesicles", "bounds", "labels"]:
+                    self.vwr.layers[f"{tag0}{tag1[0]}"].data = (
+                        getattr(self, f"{tag0}{tag1[0]}") 
+                        * label_config[f"{tag0}{tag1[0]}"]
+                        )
                     
+#%% Class(Correct) : update ---------------------------------------------------
+
+    def update(self):
+        self.update_masks()
+        self.update_labels()
+        self.save_hc()
+
+    def update_masks(self):
+        for name in self.vwr.layers:
+            name = str(name)
+            if name in ["mskn", "mskv", "mskb"]:
+                setattr(self, name, self.vwr.layers[name].data > 0)
+            else:
+                setattr(self, name, self.vwr.layers[name].data)
+        sync_masks(self.mskc, self.mskn, self.mskv)
+        
+        self.update_layers()
+    
+    def update_labels(self):
+        self.mskl = self.mskc > 0
+        self.mskb = self.vwr.layers["mskb"].data
+        self.mskb = skeletonize(self.mskb, method="lee") * label_config["mskb"]
+        self.mskb[self.mskc == 0] = 0
+        self.mskl[self.mskb != 0] = 0
+        self.mskl = label(self.mskl > 0, connectivity=1).astype("uint8")
+        self.vwr.layers["mskb"].data = self.mskb
+        self.vwr.layers["mskl"].data = self.mskl
+        
+    def save_hc(self):
+        for name in self.vwr.layers:
+            name = str(name)
+            view = f"{self.view:02d}"
+            for tag in ["cells", "nuclei", "vesicles", "bounds", "labels"]:
+                if name == f"msk{tag[0]}":
+                    save_path = self.out_path / f"msk_{tag}_hc_{view}.tif"
+                    if name == "mskl":
+                        self.outs[self.view][tag] = getattr(self, name)
+                    else:
+                        self.outs[self.view][tag] = (getattr(self, name) > 0).astype("uint8")
+                    io.imsave(
+                        save_path, self.outs[self.view][tag], 
+                        check_contrast=False,
+                        )
+           
 #%% Execute -------------------------------------------------------------------
 
 if __name__ == "__main__":

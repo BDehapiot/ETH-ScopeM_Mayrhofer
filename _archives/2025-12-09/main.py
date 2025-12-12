@@ -328,23 +328,23 @@ class Main:
         
         # Extract measurments
         self.results = {
-            "name"       : [],
-            "df"         : [],
+            "name"  : [],
+            "df"    : [],
             "psize" : [],
-            "label"      : [],
-            "area"       : [], 
-            "dist"       : [],
-            "int"        : [],
+            "label" : [],
+            "area"  : [], 
+            "dist"  : [],
+            "int"   : [],
             }
         edt = distance_transform_edt(self.mskb_hc == 0)
         for props in regionprops(label(self.mskv_hc)):
             coords = props.coords
-            self.results["name"      ].append(self.img_name)
-            self.results["df"        ].append(self.df)
+            self.results["name"   ].append(self.img_name)
+            self.results["df"     ].append(self.df)
             self.results["psize_0"].append(self.psize_0 * 1e-3)
             self.results["psize_1"].append(self.psize_1 * 1e-3)
-            self.results["label"     ].append(props.label)
-            self.results["area"      ].append(
+            self.results["label"  ].append(props.label)
+            self.results["area"   ].append(
                 props.area * ((self.psize_1 * 1e-3) ** 2))
             self.results["dist"      ].append(
                 np.mean(edt[tuple(coords.T)]) * self.psize)

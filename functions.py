@@ -1,5 +1,6 @@
 #%% Imports -------------------------------------------------------------------
 
+import pandas as pd
 from skimage import io
 from pathlib import Path
 from joblib import Parallel, delayed
@@ -15,9 +16,11 @@ from numpy.fft import fft2, ifft2, fftshift
 # skimage
 from skimage.filters import sobel
 from skimage.transform import rescale
+from skimage.measure import label, regionprops
 from skimage.morphology import remove_small_objects, remove_small_holes
 
-#%% Function(s) ---------------------------------------------------------------
+# scipy
+from scipy.ndimage import distance_transform_edt
                 
 #%% Function(s) : rescale() ---------------------------------------------------
 
@@ -246,41 +249,71 @@ def sync_masks(mskc, mskn, mskv):
     mskn[mskc == 0] = 0
     mskv[mskc == 0] = 0
     mskv[mskn > 0 ] = 0
+    
+#%% Function(s) : analyse() ---------------------------------------------------
 
-#%% Execute -------------------------------------------------------------------
-
-if __name__ == "__main__":
+def get_vesicle_results(prp, mskv, mskb, mskl, pix_ref=27.2):
     
-    # Paths
-    dataset = "gigyf12_dko_1.7nm"
-    data_path = Path(
-        rf"\\scopem-idadata.ethz.ch\BDehapiot\remote_Mayrhofer\data\{dataset}")
-    rsc_path = data_path / "rsc"
-    
-    # Load
-    imgs, mtds = load_images(rsc_path)
-    
-    # Normalize
-    imgs = normalize_images(imgs)
-    
-    # Split
-    imgs, mtds = split_images(imgs, mtds, ntiles=24)
-    
-    # Shift & stich
-    imgs_s = []
-    for i in range(len(imgs)):
-        mtds[i] = get_shifts(imgs[i], mtds[i])
-        imgs_s.append(stich_images(imgs[i], mtds[i]))     
+    resv = {
         
-#%%
+        "idxv" : [],
+        "area" : [],
+        "ints" : [],
+        "dist" : [],
+        "idxc" : [],
+        
+        }
     
-    # Imports
-    import napari
+    edt = distance_transform_edt(mskb == 0)
+    for props in regionprops(label(mskv)):
+        coords = props.coords
+        idxv = props.label
+        area = props.area * ((pix_ref * 1e-3) ** 2)
+        ints = np.mean(prp[tuple(coords.T)])
+        dist = np.mean(edt[tuple(coords.T)]) * pix_ref * 1e-3
+        idxc = np.max(mskl[tuple(coords.T)])
+        resv["idxv"].append(idxv)
+        resv["area"].append(area)
+        resv["ints"].append(ints)
+        resv["dist"].append(dist)
+        resv["idxc"].append(idxc)
+    
+    df_resv = pd.DataFrame(resv)
+    
+    return resv, df_resv
 
-    # Predict
-    prd = predict_images(imgs_s[0], model_type="vesicles")
+def get_cell_results(prp, mskl, df_resv, pix_ref=27.2):
     
-    # Display
-    vwr = napari.Viewer()
-    vwr.add_image(prd)
+    resc = {
+        
+        "idxc"      : [],
+        "area"      : [],
+        "numbv"     : [],
+        "densv"     : [],
+        "areav_avg" : [],
+        "intsv_avg" : [],
+        "distv_avg" : [],
+        
+        }
+    
+    for props in regionprops(label(mskl)):
+        idxc = props.label
+        df = df_resv[df_resv["idxc"] == idxc]
+        area = props.area * ((pix_ref * 1e-3) ** 2)
+        numbv = len(df)
+        densv = numbv / area
+        areav_avg = df["area"].mean()
+        intsv_avg = df["ints"].mean()
+        distv_avg = df["dist"].mean()
+        resc["idxc"     ].append(idxc)
+        resc["area"     ].append(area)
+        resc["numbv"    ].append(numbv)
+        resc["densv"    ].append(densv)
+        resc["areav_avg"].append(areav_avg)
+        resc["intsv_avg"].append(intsv_avg)
+        resc["distv_avg"].append(distv_avg)    
+        
+    df_resc = pd.DataFrame(resc)
+    
+    return resc, df_resc
     

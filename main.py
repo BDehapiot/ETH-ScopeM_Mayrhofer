@@ -1,53 +1,22 @@
 #%% Imports -------------------------------------------------------------------
 
 import time
+import pickle
 import shutil
+import numpy as np
 from skimage import io
-from pathlib import Path
 from joblib import Parallel, delayed
+
+# Classes
+from correct import Correct
 
 # Functions
 from functions import (
     get_rescaling_factor, rescale_image, 
     load_images, normalize_images, split_images, get_shifts, stich_images,
     predict_images, get_mask,
+    get_vesicle_results, get_cell_results,
     )
-
-#%% Inputs --------------------------------------------------------------------
-
-dataset = "gigyf12_dko_1.7nm"
-
-# Procedure
-procedure = {
-    
-    "rescale" : 0,
-    "prepare" : 0,
-    "predict" : 0,
-    "process" : 1,
-    
-    }
-
-# Parameters
-parameters = {
-        
-    # Paths
-    "root_path" : 
-        Path(__file__).resolve().parent,
-    "data_path" : 
-        Path(rf"\\scopem-idadata.ethz.ch\BDehapiot\remote_Mayrhofer\data\{dataset}"),
-
-    # Prepare
-    "pix_ref" : 27.2,
-    "ntiles"  : 24,
-    
-    # Process
-    "mask_params"  : {
-        "cells"    : (0.5, 4096, 32),
-        "nuclei"   : (0.5, 512, 32),
-        "vesicles" : (0.25, 8, 4),
-        },
-    
-    }
     
 #%% Class(Main) ---------------------------------------------------------------
 
@@ -65,6 +34,8 @@ class Main:
         if self.procedure["prepare"]: self.prepare()
         if self.procedure["predict"]: self.predict()
         if self.procedure["process"]: self.process()
+        if self.procedure["correct"]: self.correct()
+        if self.procedure["analyse"]: self.analyse()
         
 #%% Class(Main) : initialize() ------------------------------------------------
 
@@ -75,7 +46,7 @@ class Main:
                 setattr(self, key, val)
                 
         self.raw_img_paths = list(self.data_path.glob("*.tif")) 
-        for tag in ["rsc", "prp", "prd", "prc"]:
+        for tag in ["rsc", "prp", "prd", "prc", "out"]:
             setattr(self, f"{tag}_path", self.data_path / f"{tag}") 
             img_paths = list(getattr(self, f"{tag}_path").glob("*.tif"))
             setattr(self, f"{tag}_img_paths", img_paths) 
@@ -198,7 +169,7 @@ class Main:
         t1 = time.time()
         print(f"{t1 - t0:.3f}s")
         
-#%% Class(Main) : mask() ---------------------------------------------------
+#%% Class(Main) : mask() ------------------------------------------------------
         
     def mask(self):
         
@@ -223,8 +194,66 @@ class Main:
             
         t1 = time.time()
         print(f"{t1 - t0:.3f}s")
+        
+#%% Class(Main) : correct() ---------------------------------------------------
 
+    def correct(self):
+        
+        print(f"correct() - {self.data_path.name}")
+        Correct(procedure=self.procedure, parameters=self.parameters)
+        
+#%% Class(Main) : analyse() ---------------------------------------------------
+
+    def analyse(self):
+        
+        self.nviews = len(self.prp_img_paths)
+        
+        # Load data
+        prps, outs = [], []
+        for view in range(self.nviews):
+            tmp_dict = {}
+            for path in self.prp_img_paths:
+                if f"{view:02d}" in path.name:
+                    prps.append(io.imread(path))
+            for path in self.out_img_paths:
+                if f"{view:02d}" in path.name:
+                    tmp_dict[f"{path.stem.split('_')[1]}"] = io.imread(path)
+            outs.append(tmp_dict)
+        self.prps = prps
+        self.outs = outs
+        
+        # Analyse
+        for view in range(self.nviews):
+                        
+            # Fetch data
+            prp  = self.prps[view]
+            mskv = self.outs[view]["vesicles"]
+            mskb = self.outs[view]["bounds"]
+            mskl = self.outs[view]["labels"]
+            
+            if not np.all(mskb == 0):
+                
+                resv, df_resv = get_vesicle_results(
+                    prp, mskv, mskb, mskl, pix_ref=self.pix_ref)
+                resc, df_resc = get_cell_results(
+                    prp, mskl, df_resv, pix_ref=self.pix_ref)
+                    
+                # Save
+                save_namev = f"results_vesicles_{view:02d}"
+                save_namec = f"results_cells_{view:02d}"
+                with open(self.out_path / (save_namev + ".pkl"), "wb") as f:
+                    pickle.dump(resv, f)
+                with open(self.out_path / (save_namec + ".pkl"), "wb") as f:
+                    pickle.dump(resc, f)
+                df_resv.to_csv(
+                    self.out_path / (save_namev + ".csv"), index=False)
+                df_resc.to_csv(
+                    self.out_path / (save_namec + ".csv"), index=False)
+                 
 #%% Execute -------------------------------------------------------------------
 
 if __name__ == "__main__":
+    from run import parameters, procedure
     main = Main(procedure=procedure, parameters=parameters)
+    prps = main.prps
+    outs = main.outs

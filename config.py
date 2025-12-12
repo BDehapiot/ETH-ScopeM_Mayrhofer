@@ -1,5 +1,15 @@
 #%% Config. Layers ------------------------------------------------------------
 
+label_config = {
+    
+    "mskc" : 1, 
+    "mskn" : 2, 
+    "mskv" : 6, 
+    "mskb" : 231, 
+    "mskl" : 1,
+    
+    }
+
 layer_config = {
     
     "prp" : {
@@ -68,3 +78,4 @@ layer_config = {
         },
     
     }
+
