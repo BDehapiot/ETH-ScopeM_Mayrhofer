@@ -67,7 +67,7 @@ layer_config = {
         "name"     : "mskb",
         "blending" : "additive",
         "visible"  : 0,
-        "opacity"  : 0.6,
+        "opacity"  : 0.2,
         },
     
     "mskl" : {

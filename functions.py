@@ -17,7 +17,8 @@ from numpy.fft import fft2, ifft2, fftshift
 from skimage.filters import sobel
 from skimage.transform import rescale
 from skimage.measure import label, regionprops
-from skimage.morphology import remove_small_objects, remove_small_holes
+from skimage.morphology import (
+    remove_small_objects, remove_small_holes, skeletonize)
 
 # scipy
 from scipy.ndimage import distance_transform_edt
@@ -100,6 +101,10 @@ def split_images(imgs, mtds, ntiles=24):
                     tmp_mtds.append(mtds[i])
             split_imgs.append(tmp_imgs)
             split_mtds.append(tmp_mtds)
+            
+    # Remove empty split
+    split_imgs = [sublist for sublist in split_imgs if sublist]
+    split_mtds = [sublist for sublist in split_mtds if sublist]
     
     return split_imgs, split_mtds
     
@@ -245,11 +250,19 @@ def get_mask(prd, thresh, min_size_o, min_size_h):
     msk = remove_small_holes(msk, area_threshold=min_size_h)
     return msk.astype("uint8")
 
+#%% Function(s) : correct() ---------------------------------------------------
+    
 def sync_masks(mskc, mskn, mskv):
     mskn[mskc == 0] = 0
     mskv[mskc == 0] = 0
-    mskv[mskn > 0 ] = 0
+    mskv[mskn > 0 ] = 0 
     
+def skeletonize_bounds(mskb, pad_width):
+    mskb = np.pad(mskb > 0, pad_width, mode="constant", constant_values=1)
+    mskb = skeletonize(mskb, method="lee")
+    mskb = mskb[pad_width:-pad_width, pad_width:-pad_width]
+    return mskb   
+
 #%% Function(s) : analyse() ---------------------------------------------------
 
 def get_vesicle_results(prp, mskv, mskb, mskl, pix_ref=27.2):

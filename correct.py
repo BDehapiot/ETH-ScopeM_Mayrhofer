@@ -5,14 +5,14 @@ from skimage import io
 from functools import partial
 
 # functions
-from functions import sync_masks
+from functions import sync_masks, skeletonize_bounds
 
 # config
 from config import label_config, layer_config
 
 # Skimage
-from skimage.morphology import skeletonize
 from skimage.measure import label
+from skimage.morphology import skeletonize, remove_small_objects
 
 # napari
 import napari
@@ -86,6 +86,7 @@ class Correct:
             self.vwr.layers[self.active].selected_label = value
             
     def correct_mask(self, target):
+        self.update()
         self.active = target
         for name in self.vwr.layers:
             name = str(name)
@@ -316,12 +317,14 @@ class Correct:
         self.save_hc()
 
     def update_masks(self):
+        
         for name in self.vwr.layers:
             name = str(name)
             if name in ["mskn", "mskv", "mskb"]:
                 setattr(self, name, self.vwr.layers[name].data > 0)
             else:
                 setattr(self, name, self.vwr.layers[name].data)
+        
         sync_masks(self.mskc, self.mskn, self.mskv)
         
         self.update_layers()
@@ -329,10 +332,12 @@ class Correct:
     def update_labels(self):
         self.mskl = self.mskc > 0
         self.mskb = self.vwr.layers["mskb"].data
-        self.mskb = skeletonize(self.mskb, method="lee") * label_config["mskb"]
+        self.mskb = skeletonize_bounds(self.mskb, 10) * label_config["mskb"]                                 
         self.mskb[self.mskc == 0] = 0
         self.mskl[self.mskb != 0] = 0
         self.mskl = label(self.mskl > 0, connectivity=1).astype("uint8")
+        self.mskl = remove_small_objects(
+            self.mskl, min_size=self.parameters["mask_params"]["cells"][1])
         self.vwr.layers["mskb"].data = self.mskb
         self.vwr.layers["mskl"].data = self.mskl
         

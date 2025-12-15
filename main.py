@@ -54,9 +54,7 @@ class Main:
 #%% Class(Main) : rescale() ---------------------------------------------------
 
     def rescale(self):
-        
-        print(f"rescale() - {self.data_path.name}")
-        
+                
         # Setup "rsc" directory
         if self.rsc_path.exists():
             shutil.rmtree(self.rsc_path)
@@ -67,16 +65,28 @@ class Main:
         
         # Rescale -------------------------------------------------------------
         
-        t0 = time.time()
-        print(" - rescale : ", end="", flush=True)
+        if self.parallel:
         
-        imgs = Parallel(n_jobs=-1)(
-            delayed(rescale_image)(img_path, rf)
-                for img_path in self.img_paths
-                )
+            print(f"rescale() - {self.data_path.name}")    
         
-        t1 = time.time()
-        print(f"{t1 - t0:.3f}s")
+            t0 = time.time()
+            print(" - rescale : ", end="", flush=True)
+                    
+            imgs = Parallel(n_jobs=-1)(
+                delayed(rescale_image)(img_path, rf)
+                    for img_path in self.raw_img_paths
+                    )
+            
+            t1 = time.time()
+            print(f"{t1 - t0:.3f}s")
+            
+        else:
+            
+            imgs = []
+            for img_path in self.raw_img_paths:
+                t0 = time.time()
+                print(f"rescale() - {img_path.name}") 
+                imgs.append(rescale_image(img_path, rf))
 
         # Save images ---------------------------------------------------------
         
@@ -114,7 +124,7 @@ class Main:
         
         # Split
         imgs, mtds = split_images(imgs, mtds, ntiles=self.ntiles)
-        
+                
         t1 = time.time()
         print(f"{t1 - t0:.3f}s")
         
@@ -159,7 +169,7 @@ class Main:
         t0 = time.time()
         print(" - predict & save : ", end="", flush=True)
 
-        for i, path in enumerate(self.prp_paths):
+        for i, path in enumerate(self.prp_img_paths):
             for model_type in ["cells", "nuclei", "vesicles"]:
                 prd = predict_images(
                     io.imread(path), model_type=model_type)
@@ -224,36 +234,38 @@ class Main:
         
         # Analyse
         for view in range(self.nviews):
-                        
-            # Fetch data
-            prp  = self.prps[view]
-            mskv = self.outs[view]["vesicles"]
-            mskb = self.outs[view]["bounds"]
-            mskl = self.outs[view]["labels"]
+                                    
+            if self.outs[view]:
             
-            if not np.all(mskb == 0):
+                # Fetch data
+                prp  = self.prps[view]
+                mskv = self.outs[view]["vesicles"]
+                mskb = self.outs[view]["bounds"]
+                mskl = self.outs[view]["labels"]
                 
-                resv, df_resv = get_vesicle_results(
-                    prp, mskv, mskb, mskl, pix_ref=self.pix_ref)
-                resc, df_resc = get_cell_results(
-                    prp, mskl, df_resv, pix_ref=self.pix_ref)
+                if not np.all(mskb == 0):
                     
-                # Save
-                save_namev = f"results_vesicles_{view:02d}"
-                save_namec = f"results_cells_{view:02d}"
-                with open(self.out_path / (save_namev + ".pkl"), "wb") as f:
-                    pickle.dump(resv, f)
-                with open(self.out_path / (save_namec + ".pkl"), "wb") as f:
-                    pickle.dump(resc, f)
-                df_resv.to_csv(
-                    self.out_path / (save_namev + ".csv"), index=False)
-                df_resc.to_csv(
-                    self.out_path / (save_namec + ".csv"), index=False)
+                    resv, df_resv = get_vesicle_results(
+                        prp, mskv, mskb, mskl, pix_ref=self.pix_ref)
+                    resc, df_resc = get_cell_results(
+                        prp, mskl, df_resv, pix_ref=self.pix_ref)
+                        
+                    # Save
+                    save_namev = f"results_vesicles_{view:02d}"
+                    save_namec = f"results_cells_{view:02d}"
+                    with open(self.out_path / (save_namev + ".pkl"), "wb") as f:
+                        pickle.dump(resv, f)
+                    with open(self.out_path / (save_namec + ".pkl"), "wb") as f:
+                        pickle.dump(resc, f)
+                    df_resv.to_csv(
+                        self.out_path / (save_namev + ".csv"), index=False)
+                    df_resc.to_csv(
+                        self.out_path / (save_namec + ".csv"), index=False)
                  
 #%% Execute -------------------------------------------------------------------
 
 if __name__ == "__main__":
     from run import parameters, procedure
     main = Main(procedure=procedure, parameters=parameters)
-    prps = main.prps
-    outs = main.outs
+    # prps = main.prps
+    # outs = main.outs

@@ -5,15 +5,20 @@ from pathlib import Path
 
 #%% Inputs (Main) -------------------------------------------------------------
 
-dataset = "gigyf12_dko_1.7nm"
+# dataset = "gigyf12_dko_1.7nm"
+# dataset = "ins1e_wt_1.7nm"
+# dataset = "gigyf12_dko_3.25nm_00"
+dataset = "gigyf12_dko_3.25nm_01"
+# dataset = "ins1e_wt_3.25nm_00"
+# dataset = "ins1e_wt_3.25nm_01"
 
 procedure = {
     
     "rescale" : 0,
-    "prepare" : 0,
+    "prepare" : 1,
     "predict" : 0,
     "process" : 0,
-    "correct" : 1,
+    "correct" : 0,
     "analyse" : 0,
     
     }
@@ -26,14 +31,17 @@ parameters = {
     "data_path" : 
         Path(rf"\\scopem-idadata.ethz.ch\BDehapiot\remote_Mayrhofer\data\{dataset}"),
 
+    # Rescale
+    "parallel" : True,
+
     # Prepare
     "pix_ref" : 27.2, # nm
     "ntiles"  : 24,
     
     # Process
     "mask_params"  : {
-        "cells"    : (0.5, 4096, 32),
-        "nuclei"   : (0.5, 512, 32),
+        "cells"    : (0.5, 1e4, 128),
+        "nuclei"   : (0.5, 1e3, 128),
         "vesicles" : (0.25, 8, 4),
         },
     
@@ -43,3 +51,5 @@ parameters = {
 
 if __name__ == "__main__":
     main = Main(procedure=procedure, parameters=parameters)
+    imgs = main.imgs
+    mtds = main.mtds
