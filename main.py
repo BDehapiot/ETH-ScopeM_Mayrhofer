@@ -128,6 +128,9 @@ class Main:
         t1 = time.time()
         print(f"{t1 - t0:.3f}s")
         
+        self.imgs = imgs
+        self.mtds = mtds
+        
         # Shift & stich -------------------------------------------------------
         
         t0 = time.time()

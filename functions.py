@@ -103,8 +103,8 @@ def split_images(imgs, mtds, ntiles=24):
             split_mtds.append(tmp_mtds)
             
     # Remove empty split
-    split_imgs = [sublist for sublist in split_imgs if sublist]
-    split_mtds = [sublist for sublist in split_mtds if sublist]
+    split_imgs = [sublist for sublist in split_imgs if len(sublist) > 25]
+    split_mtds = [sublist for sublist in split_mtds if len(sublist) > 25]
     
     return split_imgs, split_mtds
     

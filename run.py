@@ -8,9 +8,9 @@ from pathlib import Path
 # dataset = "gigyf12_dko_1.7nm"
 # dataset = "ins1e_wt_1.7nm"
 # dataset = "gigyf12_dko_3.25nm_00"
-dataset = "gigyf12_dko_3.25nm_01"
+# dataset = "gigyf12_dko_3.25nm_01"
 # dataset = "ins1e_wt_3.25nm_00"
-# dataset = "ins1e_wt_3.25nm_01"
+dataset = "ins1e_wt_3.25nm_01"
 
 procedure = {
     
@@ -32,7 +32,7 @@ parameters = {
         Path(rf"\\scopem-idadata.ethz.ch\BDehapiot\remote_Mayrhofer\data\{dataset}"),
 
     # Rescale
-    "parallel" : True,
+    "parallel" : False,
 
     # Prepare
     "pix_ref" : 27.2, # nm
@@ -51,5 +51,5 @@ parameters = {
 
 if __name__ == "__main__":
     main = Main(procedure=procedure, parameters=parameters)
-    imgs = main.imgs
-    mtds = main.mtds
+    # imgs = main.imgs
+    # mtds = main.mtds
