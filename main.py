@@ -123,7 +123,8 @@ class Main:
         imgs = normalize_images(imgs)
         
         # Split
-        imgs, mtds = split_images(imgs, mtds, ntiles=self.ntiles)
+        imgs, mtds = split_images(
+            imgs, mtds, tiles_hw=self.tiles_hw, tiles_ratio=self.tiles_ratio)
                 
         t1 = time.time()
         print(f"{t1 - t0:.3f}s")
@@ -270,5 +271,3 @@ class Main:
 if __name__ == "__main__":
     from run import parameters, procedure
     main = Main(procedure=procedure, parameters=parameters)
-    # prps = main.prps
-    # outs = main.outs

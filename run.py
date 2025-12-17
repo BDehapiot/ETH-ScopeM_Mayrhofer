@@ -32,11 +32,12 @@ parameters = {
         Path(rf"\\scopem-idadata.ethz.ch\BDehapiot\remote_Mayrhofer\data\{dataset}"),
 
     # Rescale
-    "parallel" : False,
+    "parallel"     : False,
 
     # Prepare
-    "pix_ref" : 27.2, # nm
-    "ntiles"  : 24,
+    "pix_ref"      : 27.2, # nm
+    "tiles_hw"     : 24,
+    "tiles_ratio"  : 0.5,
     
     # Process
     "mask_params"  : {
@@ -51,5 +52,5 @@ parameters = {
 
 if __name__ == "__main__":
     main = Main(procedure=procedure, parameters=parameters)
-    # imgs = main.imgs
-    # mtds = main.mtds
+    imgs = main.imgs
+    mtds = main.mtds

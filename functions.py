@@ -76,18 +76,18 @@ def normalize_images(imgs):
     imgs = norm_pct(imgs, pct_low=0.1, pct_high=99.9, mask=imgs > 0)
     return (imgs * 255).astype("uint8")
 
-def split_images(imgs, mtds, ntiles=24):
+def split_images(imgs, mtds, tiles_hw=24, tiles_ratio=0.5):
     
     # Get tile coordinates
     rows = [m["row"] for m in mtds]
     cols = [m["col"] for m in mtds]
     minR, maxR = min(rows), max(rows)
     minC, maxC = min(cols), max(cols)
-    r0s = np.arange(minR, maxR, ntiles)
-    r1s = r0s + (ntiles - 1)
+    r0s = np.arange(minR, maxR, tiles_hw)
+    r1s = r0s + (tiles_hw - 1)
     if r1s[-1] > maxR: r1s[-1] = maxR
-    c0s = np.arange(minC, maxC, ntiles)
-    c1s = c0s + (ntiles - 1)
+    c0s = np.arange(minC, maxC, tiles_hw)
+    c1s = c0s + (tiles_hw - 1)
     if c1s[-1] > maxC: c1s[-1] = maxC
     
     # Split images
@@ -103,8 +103,11 @@ def split_images(imgs, mtds, ntiles=24):
             split_mtds.append(tmp_mtds)
             
     # Remove empty split
-    split_imgs = [sublist for sublist in split_imgs if len(sublist) > 25]
-    split_mtds = [sublist for sublist in split_mtds if len(sublist) > 25]
+    tiles_min  = (tiles_hw ** 2) * tiles_ratio
+    split_imgs = [
+        sublist for sublist in split_imgs if len(sublist) >= tiles_min]
+    split_mtds = [
+        sublist for sublist in split_mtds if len(sublist) >= tiles_min]
     
     return split_imgs, split_mtds
     
