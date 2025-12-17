@@ -12,7 +12,7 @@ from config import label_config, layer_config
 
 # Skimage
 from skimage.measure import label
-from skimage.morphology import skeletonize, remove_small_objects
+from skimage.morphology import remove_small_objects
 
 # napari
 import napari

@@ -13,59 +13,76 @@ from bdtools.models.annotate import Annotate
 
 #%% Inputs(general) -----------------------------------------------------------
 
-# Procedure
-annotate = 0
-train = 1
+# Paths
+root_path = Path.cwd()
+train_path = Path(Path.cwd(), "data", "train")
 
 # Parameters
-mask_type = "vesicles"
-
-# Paths
-train_path = Path(Path.cwd() / "data" / "train")
+mask_type = "cells"
 
 #%% Inputs(model) -------------------------------------------------------------
 
-# UNet build()
-backbone = "resnet18"
-activation = "sigmoid"
-downscale_factor = 1
+# Procedure
+procedure = {
+    
+    "annotate" : 1,
+    "train"    : 0,
+    
+    }
 
-# UNet train()
-preview = 0
-load_name = ""
+# Build
+unet_build = {
+    
+    "load_name"  : "",
+    "save_name"  : "",
+    "root_path"  : root_path,
+    "backbone"   : "resnet18",
+    "activation" : "sigmoid",
+    
+    }
 
-# preprocess
-patch_size = 250
-patch_overlap = 125
-img_norm = "none"
-msk_type = "normal"
-
-# augment
-iterations = 2500
-invert_p = 0.0
-gamma_p = 0.0
-gblur_p = 0.0
-noise_p = 0.0 
-flip_p = 0.5 
-distord_p = 0.5
-
-# train
-epochs = 100
-batch_size = 16
-validation_split = 0.2
-metric = "soft_dice_coef"
-learning_rate = 0.001
-patience = 20
+# Train
+unet_train = {
+    
+    "preview"            : 0,
+    "X_val"              : None,
+    "y_val"              : None,
+    
+    # Preprocess
+    "img_norm"           : "none", 
+    "msk_type"           : "normal", 
+    "patch_size"         : 250,
+    "patch_overlap"      : 125,
+    "downscaling_factor" : 1, 
+    
+    # Augment
+    "iterations"         : 2500,
+    "invert_p"           : 0.0,
+    "gamma_p"            : 0.0, 
+    "gblur_p"            : 0.0, 
+    "noise_p"            : 0.0, 
+    "flip_p"             : 0.5, 
+    "distord_p"          : 0.5,
+    
+    # Train
+    "epochs"             : 100,
+    "batch_size"         : 16,
+    "validation_split"   : 0.2,
+    "metric"             : "soft_dice_coef",
+    "learning_rate"      : 0.001,
+    "patience"           : 20,
+    
+    }
 
 #%% Execute -------------------------------------------------------------------
 
 if __name__ == "__main__":
 
-    if annotate:
+    if procedure["annotate"]:
         
         Annotate(train_path)
         
-    if train:
+    if procedure["train"]:
     
         # Load data
         imgs, msks = [], []
@@ -80,44 +97,8 @@ if __name__ == "__main__":
         # Custom normalization
         imgs = custom_normalization(imgs)
 
-        unet = UNet(
-            save_name="",
-            load_name=load_name,
-            root_path=Path.cwd(),
-            backbone=backbone,
-            classes=1,
-            activation=activation,
-            )
+        # Build
+        unet = UNet(**unet_build)
         
         # Train
-        unet.train(
-            
-            imgs, msks, 
-            X_val=None, y_val=None,
-            preview=preview,
-            
-            # Preprocess
-            img_norm=img_norm, 
-            msk_type=msk_type, 
-            patch_size=patch_size,
-            patch_overlap=patch_overlap,
-            downscaling_factor=downscale_factor, 
-            
-            # Augment
-            iterations=iterations,
-            invert_p=invert_p,
-            gamma_p=gamma_p, 
-            gblur_p=gblur_p, 
-            noise_p=noise_p, 
-            flip_p=flip_p, 
-            distord_p=distord_p,
-            
-            # Train
-            epochs=epochs,
-            batch_size=batch_size,
-            validation_split=validation_split,
-            metric=metric,
-            learning_rate=learning_rate,
-            patience=patience,
-            
-            )
+        unet.train(imgs, msks, **unet_train) 
