@@ -33,7 +33,7 @@ class Main:
         if self.procedure["rescale"]: self.rescale()
         if self.procedure["prepare"]: self.prepare()
         if self.procedure["predict"]: self.predict()
-        if self.procedure["process"]: self.process()
+        if self.procedure["mask"   ]: self.mask()
         if self.procedure["correct"]: self.correct()
         if self.procedure["analyse"]: self.analyse()
         
@@ -46,7 +46,7 @@ class Main:
                 setattr(self, key, val)
                 
         self.raw_img_paths = list(self.data_path.glob("*.tif")) 
-        for tag in ["rsc", "prp", "prd", "prc", "out"]:
+        for tag in ["rsc", "prp", "prd", "msk", "out"]:
             setattr(self, f"{tag}_path", self.data_path / f"{tag}") 
             img_paths = list(getattr(self, f"{tag}_path").glob("*.tif"))
             setattr(self, f"{tag}_img_paths", img_paths) 
@@ -199,7 +199,7 @@ class Main:
         t0 = time.time()
         print(" - mask & save : ", end="", flush=True)
         
-        for path in self.prd_paths:
+        for path in self.prd_img_paths:
             model_type = path.stem.split("_")[-2]
             prd = io.imread(path)
             msk = get_mask(prd, *self.parameters["mask_params"][model_type])

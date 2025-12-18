@@ -4,9 +4,6 @@ import numpy as np
 from skimage import io
 from pathlib import Path
 
-# functions
-from functions import normalize_images
-
 # bdtools
 from bdtools.models.unet import UNet
 from bdtools.models.annotate import Annotate
@@ -20,22 +17,20 @@ train_path = Path(Path.cwd(), "data", "train")
 # Parameters
 mask_type = "vesicles"
 
-"The vesicles mask have been mixed with nuclei..."
-
 #%% Inputs(model) -------------------------------------------------------------
 
 # Procedure
 procedure = {
     
-    "annotate" : 1,
-    "train"    : 0,
+    "annotate" : 0,
+    "train"    : 1,
     
     }
 
 # Build
 unet_build = {
     
-    "load_name"  : "model_250_normal_5000-940_1",
+    "load_name"  : "",
     "save_name"  : "",
     "root_path"  : root_path,
     "backbone"   : "resnet18",
@@ -87,31 +82,18 @@ if __name__ == "__main__":
     if procedure["train"]:
             
         # Load data
-        imgs, msks, imgs_old, msks_old = [], [], [], []
-        for msk_path in list(train_path.rglob("*.tif")):
+        imgs, msks= [], []
+        for msk_path in list(train_path.glob("*.tif")):
             if f"_mask_{mask_type}" in msk_path.name:
                 img_path = Path(str(msk_path).replace(f"_mask_{mask_type}", ""))
                 msk = io.imread(msk_path)
                 img = io.imread(img_path).astype("float32")
-                if msk_path.name.startswith("patch"):
-                    msks_old.append(msk)
-                    imgs_old.append(img)
-                else:
-                    msks.append(msk)
-                    imgs.append(img)
-        imgs_old = np.stack(imgs_old)
-        msks_old = np.stack(msks_old)
+                msks.append(msk)
+                imgs.append(img)
         imgs = np.stack(imgs)
         msks = np.stack(msks)
         
-        # Normalize old
-        imgs_old = normalize_images(imgs_old)
-        
-        # Concatenate
-        imgs = np.concatenate([imgs, imgs_old], axis=0)
-        msks = np.concatenate([msks, imgs_old], axis=0)
-        
-        # Normalize all
+        # Normalize
         imgs /= 255
 
         # Build
