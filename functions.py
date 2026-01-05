@@ -238,12 +238,22 @@ def stich_images(imgs, mtds, scaling_coeff=1):
 
 #%% Function(s) : predict() ---------------------------------------------------
 
+import gc
+from keras import backend as K
+
 def predict_images(img, model_type="cells"):
+    
     img = img.astype("float32") / 255
     load_name = list(Path.cwd().glob(f"model-{model_type}*"))[0]
     unet = UNet(load_name=load_name)
     prd = unet.predict(img, verbose=0)
-    return (prd * 255).astype("uint8")
+    prd = (prd * 255).astype("uint8")
+    
+    del unet
+    K.clear_session()
+    gc.collect()   
+    
+    return prd
 
 #%% Function(s) : process() ---------------------------------------------------
 

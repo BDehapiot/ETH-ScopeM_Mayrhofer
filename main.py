@@ -17,7 +17,7 @@ from functions import (
     predict_images, get_mask,
     get_vesicle_results, get_cell_results,
     )
-    
+
 #%% Class(Main) ---------------------------------------------------------------
 
 class Main:
