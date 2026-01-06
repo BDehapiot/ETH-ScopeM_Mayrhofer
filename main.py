@@ -1,7 +1,6 @@
 #%% Imports -------------------------------------------------------------------
 
 import time
-import pickle
 import shutil
 import numpy as np
 from skimage import io
@@ -16,6 +15,7 @@ from functions import (
     load_images, normalize_images, split_images, get_shifts, stich_images,
     predict_images, get_mask,
     get_vesicle_results, get_cell_results,
+    concatenate_df, condition_avg_df,
     )
 
 #%% Class(Main) ---------------------------------------------------------------
@@ -35,6 +35,7 @@ class Main:
         if self.procedure["predict"]: self.predict()
         if self.procedure["mask"   ]: self.mask()
         if self.procedure["correct"]: self.correct()
+        if self.procedure["measure"]: self.measure()
         if self.procedure["analyse"]: self.analyse()
         
 #%% Class(Main) : initialize() ------------------------------------------------
@@ -50,6 +51,9 @@ class Main:
             setattr(self, f"{tag}_path", self.data_path / f"{tag}") 
             img_paths = list(getattr(self, f"{tag}_path").glob("*.tif"))
             setattr(self, f"{tag}_img_paths", img_paths) 
+            
+        self.resv_paths = list(self.data_path.parent.rglob("results_v*.csv")) 
+        self.resc_paths = list(self.data_path.parent.rglob("results_c*.csv")) 
         
 #%% Class(Main) : rescale() ---------------------------------------------------
 
@@ -216,9 +220,9 @@ class Main:
         print(f"correct() - {self.data_path.name}")
         Correct(procedure=self.procedure, parameters=self.parameters)
         
-#%% Class(Main) : analyse() ---------------------------------------------------
+#%% Class(Main) : measure() ---------------------------------------------------
 
-    def analyse(self):
+    def measure(self):
         
         self.nviews = len(self.prp_img_paths)
         
@@ -249,25 +253,50 @@ class Main:
                 
                 if not np.all(mskb == 0):
                     
-                    resv, df_resv = get_vesicle_results(
-                        prp, mskv, mskb, mskl, pix_ref=self.pix_ref)
-                    resc, df_resc = get_cell_results(
-                        prp, mskl, df_resv, pix_ref=self.pix_ref)
+                    df_v = get_vesicle_results(
+                        prp, mskv, mskb, mskl, 
+                        dataset=self.data_path.name, pix_ref=self.pix_ref
+                        )
+                    df_c = get_cell_results(
+                        prp, mskl, df_v, 
+                        dataset=self.data_path.name, pix_ref=self.pix_ref
+                        )
                         
                     # Save
-                    save_namev = f"results_vesicles_{view:02d}"
-                    save_namec = f"results_cells_{view:02d}"
-                    with open(self.out_path / (save_namev + ".pkl"), "wb") as f:
-                        pickle.dump(resv, f)
-                    with open(self.out_path / (save_namec + ".pkl"), "wb") as f:
-                        pickle.dump(resc, f)
-                    df_resv.to_csv(
-                        self.out_path / (save_namev + ".csv"), index=False)
-                    df_resc.to_csv(
-                        self.out_path / (save_namec + ".csv"), index=False)
+                    df_v.to_csv(
+                        self.out_path / f"results_vesicles_{view:02d}.csv",
+                        index=False
+                        )
+                    df_c.to_csv(
+                        self.out_path / f"results_cells_{view:02d}.csv",
+                        index=False
+                        )
+
+#%% Class(Main) : analyse() ---------------------------------------------------
+    
+    def analyse(self):
+
+        # import pandas as pd        
+
+        # Load & concatenate results
+        df_all_v = concatenate_df(self.resv_paths)
+        df_all_c = concatenate_df(self.resc_paths)        
+        self.df_all_v = df_all_v
+        self.df_all_c = df_all_c
+        
+        # Condition average
+        df_cnd_avg_v = condition_avg_df(df_all_v, self.conditions)
+        df_cnd_avg_c = condition_avg_df(df_all_c, self.conditions)
+        self.df_cnd_avg_v = df_cnd_avg_v
+        self.df_cnd_avg_c = df_cnd_avg_c
+
                  
 #%% Execute -------------------------------------------------------------------
 
 if __name__ == "__main__":
     from run import parameters, procedure
     main = Main(procedure=procedure, parameters=parameters)
+    df_all_v = main.df_all_v
+    df_all_c = main.df_all_c
+    df_cnd_avg_v = main.df_cnd_avg_v
+    df_cnd_avg_c = main.df_cnd_avg_c

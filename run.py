@@ -9,8 +9,8 @@ from pathlib import Path
 # dataset = "gigyf12_dko_3.25nm_00"
 # dataset = "gigyf12_dko_3.25nm_01"
 # dataset = "ins1e_wt_1.7nm"
-# dataset = "ins1e_wt_3.25nm_00"
-dataset = "ins1e_wt_3.25nm_01"
+dataset = "ins1e_wt_3.25nm_00"
+# dataset = "ins1e_wt_3.25nm_01"
 
 procedure = {
     
@@ -19,8 +19,9 @@ procedure = {
     "predict" : 0,
     "mask"    : 0,
     "correct" : 1,
+    "measure" : 0,
     "analyse" : 0,
-    
+
     }
 
 parameters = {
@@ -45,6 +46,9 @@ parameters = {
         "nuclei"   : (0.5, 1e3, 128),
         "vesicles" : (0.25, 8, 4),
         },
+    
+    # Merge
+    "conditions" : ["ins1e", "gigyf12"],
     
     }
     

@@ -15,15 +15,15 @@ root_path = Path.cwd()
 train_path = Path(Path.cwd(), "data", "train")
 
 # Parameters
-mask_type = "vesicles"
+mask_type = "nuclei"
 
 #%% Inputs(model) -------------------------------------------------------------
 
 # Procedure
 procedure = {
     
-    "annotate" : 0,
-    "train"    : 1,
+    "annotate" : 1,
+    "train"    : 0,
     
     }
 

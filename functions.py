@@ -276,70 +276,88 @@ def skeletonize_bounds(mskb, pad_width):
     mskb = mskb[pad_width:-pad_width, pad_width:-pad_width]
     return mskb   
 
-#%% Function(s) : analyse() ---------------------------------------------------
+#%% Function(s) : measure() ---------------------------------------------------
 
-def get_vesicle_results(prp, mskv, mskb, mskl, pix_ref=27.2):
+def get_vesicle_results(prp, mskv, mskb, mskl, dataset="", pix_ref=27.2):
     
-    resv = {
+    df_v = {
         
-        "idxv" : [],
-        "area" : [],
-        "ints" : [],
-        "dist" : [],
-        "idxc" : [],
-        
+        "dataset" : [],
+        "idx_c"   : [],
+        "idx_v"   : [],
+        "area_v"  : [],
+        "ints_v"  : [],
+        "dist_v"  : [],
+
         }
     
     edt = distance_transform_edt(mskb == 0)
     for props in regionprops(label(mskv)):
         coords = props.coords
-        idxv = props.label
-        area = props.area * ((pix_ref * 1e-3) ** 2)
-        ints = np.mean(prp[tuple(coords.T)])
-        dist = np.mean(edt[tuple(coords.T)]) * pix_ref * 1e-3
-        idxc = np.max(mskl[tuple(coords.T)])
-        resv["idxv"].append(idxv)
-        resv["area"].append(area)
-        resv["ints"].append(ints)
-        resv["dist"].append(dist)
-        resv["idxc"].append(idxc)
-    
-    df_resv = pd.DataFrame(resv)
-    
-    return resv, df_resv
+        idx_v = props.label
+        idx_c = np.max(mskl[tuple(coords.T)])
+        area_v = props.area * ((pix_ref * 1e-3) ** 2)
+        ints_v = np.mean(prp[tuple(coords.T)])
+        dist_v = np.mean(edt[tuple(coords.T)]) * pix_ref * 1e-3
+        df_v["dataset"].append(dataset)
+        df_v["idx_v"  ].append(idx_v)
+        df_v["idx_c"  ].append(idx_c)
+        df_v["area_v" ].append(area_v)
+        df_v["ints_v" ].append(ints_v)
+        df_v["dist_v" ].append(dist_v)
 
-def get_cell_results(prp, mskl, df_resv, pix_ref=27.2):
+    return pd.DataFrame(df_v)
+
+def get_cell_results(prp, mskl, df_resv, dataset="", pix_ref=27.2):
     
-    resc = {
+    df_c = {
         
-        "idxc"      : [],
-        "area"      : [],
-        "numbv"     : [],
-        "densv"     : [],
-        "areav_avg" : [],
-        "intsv_avg" : [],
-        "distv_avg" : [],
+        "dataset"    : [],
+        "idx_c"      : [],
+        "area_c"     : [],
+        "numb_v"     : [],
+        "dens_v"     : [],
+        "area_v_avg" : [],
+        "ints_v_avg" : [],
+        "dist_v_avg" : [],
         
         }
     
     for props in regionprops(label(mskl)):
-        idxc = props.label
-        df = df_resv[df_resv["idxc"] == idxc]
-        area = props.area * ((pix_ref * 1e-3) ** 2)
-        numbv = len(df)
-        densv = numbv / area
-        areav_avg = df["area"].mean()
-        intsv_avg = df["ints"].mean()
-        distv_avg = df["dist"].mean()
-        resc["idxc"     ].append(idxc)
-        resc["area"     ].append(area)
-        resc["numbv"    ].append(numbv)
-        resc["densv"    ].append(densv)
-        resc["areav_avg"].append(areav_avg)
-        resc["intsv_avg"].append(intsv_avg)
-        resc["distv_avg"].append(distv_avg)    
-        
-    df_resc = pd.DataFrame(resc)
+        idx_c = props.label
+        df = df_resv[df_resv["idx_c"] == idx_c]
+        area_c = props.area * ((pix_ref * 1e-3) ** 2)
+        numb_v = len(df)
+        dens_v = numb_v / area_c
+        area_v_avg = df["area_v"].mean()
+        ints_v_avg = df["ints_v"].mean()
+        dist_v_avg = df["dist_v"].mean()
+        df_c["dataset"   ].append(dataset)
+        df_c["idx_c"     ].append(idx_c)
+        df_c["area_c"    ].append(area_c)
+        df_c["numb_v"    ].append(numb_v)
+        df_c["dens_v"    ].append(dens_v)
+        df_c["area_v_avg"].append(area_v_avg)
+        df_c["ints_v_avg"].append(ints_v_avg)
+        df_c["dist_v_avg"].append(dist_v_avg)    
     
-    return resc, df_resc
-    
+    return pd.DataFrame(df_c)
+
+#%% Function(s) : analyse() ---------------------------------------------------
+
+def concatenate_df(df_paths):
+    df = []
+    for path in df_paths:
+        df.append(pd.read_csv(path))
+    return pd.concat(df)
+
+def condition_avg_df(df_all, conditions):
+    df_cnd_avg = pd.DataFrame()
+    for cnd in conditions:
+        df_cnd = df_all[df_all["dataset"].str.contains(
+            cnd, case=False, na=False)]
+        df_cnd = df_cnd.loc[:, ~df_cnd.columns.str.contains("idx")]
+        df_cnd_avg[f"{cnd}_avg"] = df_cnd.mean(numeric_only=True)
+        df_cnd_avg[f"{cnd}_std"] = df_cnd.std (numeric_only=True)
+        df_cnd_avg[f"{cnd}_sem"] = df_cnd.sem (numeric_only=True)
+    return df_cnd_avg
