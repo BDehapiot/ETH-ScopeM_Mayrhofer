@@ -22,8 +22,8 @@ mask_type = "nuclei"
 # Procedure
 procedure = {
     
-    "annotate" : 1,
-    "train"    : 0,
+    "annotate" : 0,
+    "train"    : 1,
     
     }
 
@@ -83,7 +83,7 @@ if __name__ == "__main__":
             
         # Load data
         imgs, msks= [], []
-        for msk_path in list(train_path.glob("*.tif")):
+        for msk_path in list(train_path.rglob("*.tif")):
             if f"_mask_{mask_type}" in msk_path.name:
                 img_path = Path(str(msk_path).replace(f"_mask_{mask_type}", ""))
                 msk = io.imread(msk_path)

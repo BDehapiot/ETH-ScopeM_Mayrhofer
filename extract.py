@@ -1,7 +1,7 @@
 #%% Imports -------------------------------------------------------------------
 
 import numpy as np
-np.random.seed(44)
+np.random.seed(46)
 from skimage import io
 from pathlib import Path
 
@@ -13,7 +13,7 @@ from bdtools.patch import extract_patches
 # Paths
 data_path  = Path(r"\\scopem-idadata.ethz.ch\BDehapiot\remote_Mayrhofer\data")
 train_path = Path(Path(__file__).resolve().parent, "data", "train")
-patch_num  = 100
+patch_num  = 500
 patch_size = 250
 
 #%% Execute -------------------------------------------------------------------
