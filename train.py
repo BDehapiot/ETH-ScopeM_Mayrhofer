@@ -15,7 +15,7 @@ root_path = Path.cwd()
 train_path = Path(Path.cwd(), "data", "train")
 
 # Parameters
-mask_type = "nuclei"
+mask_type = "vesicles"
 
 #%% Inputs(model) -------------------------------------------------------------
 

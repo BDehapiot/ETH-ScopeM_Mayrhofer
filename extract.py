@@ -1,7 +1,7 @@
 #%% Imports -------------------------------------------------------------------
 
 import numpy as np
-np.random.seed(46)
+np.random.seed(43)
 from skimage import io
 from pathlib import Path
 
@@ -13,7 +13,7 @@ from bdtools.patch import extract_patches
 # Paths
 data_path  = Path(r"\\scopem-idadata.ethz.ch\BDehapiot\remote_Mayrhofer\data")
 train_path = Path(Path(__file__).resolve().parent, "data", "train")
-patch_num  = 500
+patch_num  = 250
 patch_size = 250
 
 #%% Execute -------------------------------------------------------------------
@@ -23,19 +23,18 @@ if __name__ == "__main__":
     prp_img_paths = list(data_path.rglob("prp*.tif"))
     for path in prp_img_paths:
         
-        if "gigyf12_dko_3.25nm_00" in str(path.resolve()):
+        # if "ins1e_wt_3.25nm_01" in str(path.resolve()):
+        #     if "prp_00" in str(path.resolve()):
             
-            if "prp_00" in str(path.resolve()):
-            
-                img = io.imread(path)
-                patches = extract_patches(img, patch_size, 0)
-                p_idxs = np.random.choice(
-                    np.arange(0, len(patches)), size=patch_num, replace=False)
-                for idx in p_idxs:
-                    patch = patches[idx]
-                    save_name = (
-                        str(path.parent.parent.name) + 
-                        f"_{path.stem}_patch-{idx:04d}.tif"
-                        )
-                    save_path = train_path / save_name
-                    io.imsave(save_path, patch, check_contrast=False)
+        img = io.imread(path)
+        patches = extract_patches(img, patch_size, 0)
+        p_idxs = np.random.choice(
+            np.arange(0, len(patches)), size=patch_num, replace=False)
+        for idx in p_idxs:
+            patch = patches[idx]
+            save_name = (
+                str(path.parent.parent.name) + 
+                f"_{path.stem}_patch-{idx:04d}.tif"
+                )
+            save_path = train_path / save_name
+            io.imsave(save_path, patch, check_contrast=False)

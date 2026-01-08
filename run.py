@@ -18,9 +18,9 @@ procedure = {
     "prepare" : 0,
     "predict" : 0,
     "mask"    : 0,
-    "correct" : 1,
+    "correct" : 0,
     "measure" : 0,
-    "analyse" : 0,
+    "analyse" : 1,
 
     }
 
@@ -56,5 +56,3 @@ parameters = {
 
 if __name__ == "__main__":
     main = Main(procedure=procedure, parameters=parameters)
-    # imgs = main.imgs
-    # mtds = main.mtds
