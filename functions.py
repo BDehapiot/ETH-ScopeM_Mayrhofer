@@ -3,6 +3,7 @@
 import pandas as pd
 from skimage import io
 from pathlib import Path
+import matplotlib.pyplot as plt
 from joblib import Parallel, delayed
 
 # bdtools
@@ -22,7 +23,10 @@ from skimage.morphology import (
 
 # scipy
 from scipy.ndimage import distance_transform_edt
-                
+
+# colors
+from colors import fcolors  
+                        
 #%% Function(s) : rescale() ---------------------------------------------------
 
 def get_rescaling_factor(data_name, psize_ref):
@@ -360,4 +364,95 @@ def condition_avg_df(df_all, conditions):
         df_cnd_avg[f"{cnd}_avg"] = df_cnd.mean(numeric_only=True)
         df_cnd_avg[f"{cnd}_std"] = df_cnd.std (numeric_only=True)
         df_cnd_avg[f"{cnd}_sem"] = df_cnd.sem (numeric_only=True)
-    return df_cnd_avg
+    return df_cnd_avg.T
+
+def plot_results(
+        df_all_v, df_all_c,
+        df_cnd_avg_v, df_cnd_avg_c,
+        conditions, conds_color,
+        ):
+    
+    tags = [
+        "area_c", "numb_v", "dens_v",
+        "area_v_avg", "ints_v_avg", "dist_v_avg",
+        "dist_v",
+        ]
+    
+    titles = [
+        "cell area", "vesicle number", "vesicle density",
+        "vesicle area", "vesicle intensity", "vesicle distance",
+        "vesicle distance distribution",
+        ]
+    
+    labels = [
+        "area (µm²)", "count", "count.µm-2",
+        "area (µm²)", "intensity (A.U.)", "distance (µm)",
+        "count",
+        ]
+    
+    # Initialize plot
+    fig = plt.figure(figsize=(6, 8))  
+    fig.suptitle(
+        (
+        f"n cells = {len(df_all_c)}\n"
+        f"n vesicles = {len(df_all_v)}"
+        ), 
+        fontsize=12, x=0.03, ha="left"
+        )
+    
+    gs = fig.add_gridspec(4, 3)
+    axes = [
+        fig.add_subplot(gs[0,  0]),
+        fig.add_subplot(gs[0,  1]),
+        fig.add_subplot(gs[0,  2]),
+        fig.add_subplot(gs[1,  0]),
+        fig.add_subplot(gs[1,  1]),
+        fig.add_subplot(gs[1,  2]),
+        fig.add_subplot(gs[2:, :]),
+        ]
+    
+    for t, (ax, tag) in enumerate(zip(axes, tags)):
+        for c, cnd in enumerate(conditions):    
+            
+            if t < 6:
+
+                # Data
+                avg, sem = (
+                    df_cnd_avg_c.loc[f"{cnd}_avg", tag],
+                    df_cnd_avg_c.loc[f"{cnd}_sem", tag],
+                    )
+                
+                # Bar plot
+                ax.bar(
+                    c, avg, yerr=sem, capsize=5, alpha=1, width=0.8,
+                    color=fcolors[f"{conds_color[c]}_40"],
+                    )
+                
+                # Formatting
+                ax.set_xticks(np.arange(len(conditions)))
+                ax.set_xticklabels(conditions, rotation=0)
+                ax.set_ylabel(labels[t])
+                ax.set_title(titles[t])
+                
+            else:
+                
+                # Data
+                val = df_all_v[df_all_v["dataset"].str.contains(
+                    cnd, case=False, na=False)][tag]
+                
+                # Hist. plot
+                ax.hist(
+                    val, label=cnd, bins=300, density=True, alpha=0.5, 
+                    color=fcolors[f"{conds_color[c]}_40"]
+                    )
+                
+                # Formatting
+                ax.set_xlim(-0.2, 16.2)
+                ax.set_xlabel("distance (µm)")
+                ax.set_ylabel(labels[t])
+                ax.set_title(titles[t])
+                ax.legend(loc="upper right")
+    
+    plt.tight_layout() 
+    
+    return fig

@@ -15,7 +15,7 @@ from functions import (
     load_images, normalize_images, split_images, get_shifts, stich_images,
     predict_images, get_mask,
     get_vesicle_results, get_cell_results,
-    concatenate_df, condition_avg_df,
+    concatenate_df, condition_avg_df, plot_results,
     )
 
 #%% Class(Main) ---------------------------------------------------------------
@@ -46,14 +46,22 @@ class Main:
             if not isinstance(val, dict):
                 setattr(self, key, val)
                 
+        self.root_path = self.data_path.parent
+                
         self.raw_img_paths = list(self.data_path.glob("*.tif")) 
         for tag in ["rsc", "prp", "prd", "msk", "out"]:
             setattr(self, f"{tag}_path", self.data_path / f"{tag}") 
             img_paths = list(getattr(self, f"{tag}_path").glob("*.tif"))
             setattr(self, f"{tag}_img_paths", img_paths) 
-            
-        self.resv_paths = list(self.data_path.parent.rglob("results_v*.csv")) 
-        self.resc_paths = list(self.data_path.parent.rglob("results_c*.csv")) 
+        
+        self.resv_paths = [
+            p for p in self.root_path.rglob("results_v*.csv") 
+            if p.parent != self.root_path
+            ]
+        self.resc_paths = [
+            p for p in self.root_path.rglob("results_c*.csv") 
+            if p.parent != self.root_path
+            ]
         
 #%% Class(Main) : rescale() ---------------------------------------------------
 
@@ -224,6 +232,8 @@ class Main:
 
     def measure(self):
         
+        print(f"measure() - {self.data_path.name}")
+        
         self.nviews = len(self.prp_img_paths)
         
         # Load data
@@ -239,6 +249,9 @@ class Main:
             outs.append(tmp_dict)
         self.prps = prps
         self.outs = outs
+        
+        t0 = time.time()
+        print(" - measure & save : ", end="", flush=True)
         
         # Analyse
         for view in range(self.nviews):
@@ -271,32 +284,51 @@ class Main:
                         self.out_path / f"results_cells_{view:02d}.csv",
                         index=False
                         )
+                    
+        t1 = time.time()
+        print(f"{t1 - t0:.3f}s")
 
 #%% Class(Main) : analyse() ---------------------------------------------------
     
     def analyse(self):
+        
+        print("analyse() - all datasets")
 
-        # import pandas as pd        
-
-        # Load & concatenate results
+        # Concatenate results
         df_all_v = concatenate_df(self.resv_paths)
         df_all_c = concatenate_df(self.resc_paths)        
-        self.df_all_v = df_all_v
-        self.df_all_c = df_all_c
         
         # Condition average
         df_cnd_avg_v = condition_avg_df(df_all_v, self.conditions)
         df_cnd_avg_c = condition_avg_df(df_all_c, self.conditions)
-        self.df_cnd_avg_v = df_cnd_avg_v
-        self.df_cnd_avg_c = df_cnd_avg_c
-
-                 
+        
+        # Plot results
+        fig = plot_results(
+            df_all_v, df_all_c, 
+            df_cnd_avg_v, df_cnd_avg_c, 
+            self.conditions, self.conds_color,
+            )
+        
+        # Save
+        df_all_v.to_csv(
+            self.root_path / "results_vesicles_all.csv", index=False)
+        df_all_c.to_csv(
+            self.root_path / "results_cells_all.csv", index=False)
+        df_cnd_avg_v.to_csv(
+            self.root_path / "results_vesicles_cnd_avg.csv", index=False)
+        df_cnd_avg_c.to_csv(
+            self.root_path / "results_cells_cnd_avg.csv", index=False)
+        fig.savefig(
+            self.root_path / "plot_results.png", format="png")
+        
 #%% Execute -------------------------------------------------------------------
 
 if __name__ == "__main__":
     from run import parameters, procedure
     main = Main(procedure=procedure, parameters=parameters)
-    df_all_v = main.df_all_v
-    df_all_c = main.df_all_c
-    df_cnd_avg_v = main.df_cnd_avg_v
-    df_cnd_avg_c = main.df_cnd_avg_c
+    # resv_paths = main.resv_paths
+    # resc_paths = main.resc_paths
+    # df_all_v = main.df_all_v
+    # df_all_c = main.df_all_c
+    # df_cnd_avg_v = main.df_cnd_avg_v
+    # df_cnd_avg_c = main.df_cnd_avg_c

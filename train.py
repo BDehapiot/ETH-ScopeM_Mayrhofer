@@ -30,7 +30,7 @@ procedure = {
 # Build
 unet_build = {
     
-    "load_name"  : "",
+    "load_name"  : "model_250_normal_5000-696_1",
     "save_name"  : "",
     "root_path"  : root_path,
     "backbone"   : "resnet18",

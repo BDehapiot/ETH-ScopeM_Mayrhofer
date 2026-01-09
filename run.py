@@ -18,17 +18,15 @@ procedure = {
     "prepare" : 0,
     "predict" : 0,
     "mask"    : 0,
-    "correct" : 0,
+    "correct" : 1,
     "measure" : 0,
-    "analyse" : 1,
+    "analyse" : 0,
 
     }
 
 parameters = {
         
     # Paths
-    "root_path" : 
-        Path(__file__).resolve().parent,
     "data_path" : 
         Path(rf"\\scopem-idadata.ethz.ch\BDehapiot\remote_Mayrhofer\data\{dataset}"),
 
@@ -48,7 +46,8 @@ parameters = {
         },
     
     # Merge
-    "conditions" : ["ins1e", "gigyf12"],
+    "conditions"   : ["ins1e", "gigyf12"],
+    "conds_color"  : ["red", "blue"], 
     
     }
     
