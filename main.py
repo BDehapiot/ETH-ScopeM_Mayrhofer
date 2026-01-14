@@ -315,9 +315,9 @@ class Main:
         df_all_c.to_csv(
             self.root_path / "results_cells_all.csv", index=False)
         df_cnd_avg_v.to_csv(
-            self.root_path / "results_vesicles_cnd_avg.csv", index=False)
+            self.root_path / "results_vesicles_cnd_avg.csv", index=True)
         df_cnd_avg_c.to_csv(
-            self.root_path / "results_cells_cnd_avg.csv", index=False)
+            self.root_path / "results_cells_cnd_avg.csv", index=True)
         fig.savefig(
             self.root_path / "plot_results.png", format="png")
         
