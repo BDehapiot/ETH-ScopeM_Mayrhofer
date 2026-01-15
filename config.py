@@ -5,7 +5,7 @@ label_config = {
     "mskc" : 1, 
     "mskn" : 2, 
     "mskv" : 6, 
-    "mskb" : 231, 
+    "mskj" : 231, 
     "mskl" : 1,
     
     }
@@ -63,8 +63,8 @@ layer_config = {
         "opacity"  : 0.6,
         },
     
-    "mskb" : {
-        "name"     : "mskb",
+    "mskj" : {
+        "name"     : "mskj",
         "blending" : "additive",
         "visible"  : 0,
         "opacity"  : 0.2,

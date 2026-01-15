@@ -261,13 +261,13 @@ class Main:
                 # Fetch data
                 prp  = self.prps[view]
                 mskv = self.outs[view]["vesicles"]
-                mskb = self.outs[view]["bounds"]
+                mskj = self.outs[view]["junctions"]
                 mskl = self.outs[view]["labels"]
                 
-                if not np.all(mskb == 0):
+                if not np.all(mskj == 0):
                     
                     df_v = get_vesicle_results(
-                        prp, mskv, mskb, mskl, 
+                        prp, mskv, mskj, mskl, 
                         dataset=self.data_path.name, pix_ref=self.pix_ref
                         )
                     df_c = get_cell_results(

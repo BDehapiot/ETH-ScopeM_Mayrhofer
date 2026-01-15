@@ -5,10 +5,10 @@ from pathlib import Path
 
 #%% Inputs (Main) -------------------------------------------------------------
 
-dataset = "gigyf12_dko_1.7nm"
+# dataset = "gigyf12_dko_1.7nm"
 # dataset = "gigyf12_dko_3.25nm_00"
 # dataset = "gigyf12_dko_3.25nm_01"
-# dataset = "ins1e_wt_1.7nm"
+dataset = "ins1e_wt_1.7nm"
 # dataset = "ins1e_wt_3.25nm_00"
 # dataset = "ins1e_wt_3.25nm_01"
 
@@ -18,9 +18,9 @@ procedure = {
     "prepare" : 0,
     "predict" : 0,
     "mask"    : 0,
-    "correct" : 0,
+    "correct" : 1,
     "measure" : 0,
-    "analyse" : 1,
+    "analyse" : 0,
 
     }
 
@@ -28,7 +28,8 @@ parameters = {
         
     # Paths
     "data_path" : 
-        Path(rf"\\scopem-idadata.ethz.ch\BDehapiot\remote_Mayrhofer\data\{dataset}"),
+        # Path(rf"\\scopem-idadata.ethz.ch\BDehapiot\remote_Mayrhofer\data\{dataset}"),
+        Path(f"D:\local_Mayrhofer\data\{dataset}"),
 
     # Rescale
     "parallel"     : False,

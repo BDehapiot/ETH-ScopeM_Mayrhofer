@@ -5,7 +5,7 @@ from skimage import io
 from functools import partial
 
 # functions
-from functions import sync_masks, skeletonize_bounds
+from functions import sync_masks, skeletonize_junctions
 
 # config
 from config import label_config, layer_config
@@ -94,7 +94,7 @@ class Correct:
                 self.vwr.layers[name].visible = 1
             else:
                 self.vwr.layers[name].visible = 0
-        if target == "mskb":
+        if target == "mskj":
             self.vwr.layers["mskl"].visible = 1
         self.set_active()
         self.set_label()
@@ -147,7 +147,7 @@ class Correct:
                 getattr(self, f"btn_{tag0}").clicked.connect(
                     partial(self.update))
             else:
-                for tag1 in ["cells", "nuclei", "vesicles", "bounds"]:
+                for tag1 in ["cells", "nuclei", "vesicles", "junctions"]:
                     setattr(self, f"btn_{tag0}{tag1[0]}", QPushButton(f"{tag0} {tag1}"))
                     act_group_layout.addWidget(getattr(self, f"btn_{tag0}{tag1[0]}"))
                     getattr(self, f"btn_{tag0}{tag1[0]}").clicked.connect(
@@ -202,9 +202,13 @@ class Correct:
                     yield
                     self.paint()     
                 if event.button == 2:
+                    self.active = "mskl"
+                    self.set_active()
                     self.set_label(0)
                     self.fill()
                     yield
+                    self.active = "mskj"
+                    self.set_active()
                     self.set_label()
                     self.paint()   
             else:
@@ -239,7 +243,7 @@ class Correct:
             if not self.outs[view]:
                 for tag in ["cells", "nuclei", "vesicles"]:
                     self.outs[view][tag] = self.msks[view][tag]
-                self.outs[view]["bounds"] = np.zeros_like(self.msks[view]["cells"])
+                self.outs[view]["junctions"] = np.zeros_like(self.msks[view]["cells"])
                 self.outs[view]["labels"] = label(self.msks[view]["cells"])
         
         self.update_views()
@@ -255,7 +259,7 @@ class Correct:
                         getattr(self, f"{tag0}s")[self.view][tag1],
                         )
             elif tag0 == "out":
-                for tag1 in ["cells", "nuclei", "vesicles", "bounds", "labels"]:
+                for tag1 in ["cells", "nuclei", "vesicles", "junctions", "labels"]:
                     setattr(
                         self, f"msk{tag1[0]}", 
                         getattr(self, f"{tag0}s")[self.view][tag1],
@@ -278,7 +282,7 @@ class Correct:
                         **layer_config[f"{tag0}{tag1[0]}"]
                         ) 
             elif tag0 == "msk":
-                for tag1 in ["cells", "nuclei", "vesicles", "bounds", "labels"]:
+                for tag1 in ["cells", "nuclei", "vesicles", "junctions", "labels"]:
                     self.vwr.add_labels(
                         getattr(self, f"{tag0}{tag1[0]}") 
                         * label_config[f"{tag0}{tag1[0]}"], 
@@ -303,7 +307,7 @@ class Correct:
                     self.vwr.layers[f"{tag0}{tag1[0]}"].data = (
                         getattr(self, f"{tag0}{tag1[0]}"))
             elif tag0 == "msk":
-                for tag1 in ["cells", "nuclei", "vesicles", "bounds", "labels"]:
+                for tag1 in ["cells", "nuclei", "vesicles", "junctions", "labels"]:
                     self.vwr.layers[f"{tag0}{tag1[0]}"].data = (
                         getattr(self, f"{tag0}{tag1[0]}") 
                         * label_config[f"{tag0}{tag1[0]}"]
@@ -320,7 +324,7 @@ class Correct:
         
         for name in self.vwr.layers:
             name = str(name)
-            if name in ["mskn", "mskv", "mskb"]:
+            if name in ["mskn", "mskv", "mskj"]:
                 setattr(self, name, self.vwr.layers[name].data > 0)
             else:
                 setattr(self, name, self.vwr.layers[name].data)
@@ -331,21 +335,21 @@ class Correct:
     
     def update_labels(self):
         self.mskl = self.mskc > 0
-        self.mskb = self.vwr.layers["mskb"].data
-        self.mskb = skeletonize_bounds(self.mskb, 10) * label_config["mskb"]                                 
-        self.mskb[self.mskc == 0] = 0
-        self.mskl[self.mskb != 0] = 0
+        self.mskj = self.vwr.layers["mskj"].data
+        self.mskj = skeletonize_junctions(self.mskj, 10) * label_config["mskj"]                                 
+        self.mskj[self.mskc == 0] = 0
+        self.mskl[self.mskj != 0] = 0
         self.mskl = label(self.mskl > 0, connectivity=1).astype("uint8")
         self.mskl = remove_small_objects(
             self.mskl, min_size=self.parameters["mask_params"]["cells"][1])
-        self.vwr.layers["mskb"].data = self.mskb
+        self.vwr.layers["mskj"].data = self.mskj
         self.vwr.layers["mskl"].data = self.mskl
         
     def save_hc(self):
         for name in self.vwr.layers:
             name = str(name)
             view = f"{self.view:02d}"
-            for tag in ["cells", "nuclei", "vesicles", "bounds", "labels"]:
+            for tag in ["cells", "nuclei", "vesicles", "junctions", "labels"]:
                 if name == f"msk{tag[0]}":
                     save_path = self.out_path / f"msk_{tag}_hc_{view}.tif"
                     if name == "mskl":

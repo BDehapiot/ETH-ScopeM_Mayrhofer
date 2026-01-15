@@ -18,7 +18,6 @@ from numpy.fft import fft2, ifft2, fftshift
 from skimage.filters import sobel
 from skimage.transform import rescale
 from skimage.measure import label, regionprops
-from skimage.segmentation import find_boundaries
 from skimage.morphology import (
     remove_small_objects, remove_small_holes, skeletonize)
 
@@ -260,7 +259,7 @@ def predict_images(img, model_type="cells"):
     
     return prd
 
-#%% Function(s) : mask() ------------------------------------------------------
+#%% Function(s) : process() ---------------------------------------------------
 
 def get_mask(prd, thresh, min_size_o, min_size_h):
     msk = prd > thresh * 255
@@ -275,45 +274,41 @@ def sync_masks(mskc, mskn, mskv):
     mskv[mskc == 0] = 0
     mskv[mskn > 0 ] = 0 
     
-def skeletonize_junctions(mskj, pad_width):
-    mskj = np.pad(mskj > 0, pad_width, mode="constant", constant_values=1)
-    mskj = skeletonize(mskj, method="lee")
-    mskj = mskj[pad_width:-pad_width, pad_width:-pad_width]
-    return mskj   
+def skeletonize_bounds(mskb, pad_width):
+    mskb = np.pad(mskb > 0, pad_width, mode="constant", constant_values=1)
+    mskb = skeletonize(mskb, method="lee")
+    mskb = mskb[pad_width:-pad_width, pad_width:-pad_width]
+    return mskb   
 
 #%% Function(s) : measure() ---------------------------------------------------
 
-def get_vesicle_results(prp, mskv, mskj, mskl, dataset="", pix_ref=27.2):
+def get_vesicle_results(prp, mskv, mskb, mskl, dataset="", pix_ref=27.2):
     
     df_v = {
         
-        "dataset"   : [],
-        "idx_c"     : [],
-        "idx_v"     : [],
-        "area_v"    : [],
-        "ints_v"    : [],
-        "dist_v_j"  : [],
-        "dist_v_m"  : [],
+        "dataset" : [],
+        "idx_c"   : [],
+        "idx_v"   : [],
+        "area_v"  : [],
+        "ints_v"  : [],
+        "dist_v"  : [],
 
         }
     
-    edt_j = distance_transform_edt(mskj == 0)
-    edt_m = distance_transform_edt(~find_boundaries(mskl))
+    edt = distance_transform_edt(mskb == 0)
     for props in regionprops(label(mskv)):
         coords = props.coords
         idx_v = props.label
         idx_c = np.max(mskl[tuple(coords.T)])
         area_v = props.area * ((pix_ref * 1e-3) ** 2)
         ints_v = np.mean(prp[tuple(coords.T)])
-        dist_v_j = np.mean(edt_j[tuple(coords.T)]) * pix_ref * 1e-3
-        dist_v_m = np.mean(edt_m[tuple(coords.T)]) * pix_ref * 1e-3
-        df_v["dataset"  ].append(dataset)
-        df_v["idx_v"    ].append(idx_v)
-        df_v["idx_c"    ].append(idx_c)
-        df_v["area_v"   ].append(area_v)
-        df_v["ints_v"   ].append(ints_v)
-        df_v["dist_v_j" ].append(dist_v_j)
-        df_v["dist_v_m" ].append(dist_v_m)
+        dist_v = np.mean(edt[tuple(coords.T)]) * pix_ref * 1e-3
+        df_v["dataset"].append(dataset)
+        df_v["idx_v"  ].append(idx_v)
+        df_v["idx_c"  ].append(idx_c)
+        df_v["area_v" ].append(area_v)
+        df_v["ints_v" ].append(ints_v)
+        df_v["dist_v" ].append(dist_v)
 
     return pd.DataFrame(df_v)
 
@@ -321,15 +316,14 @@ def get_cell_results(prp, mskl, df_resv, dataset="", pix_ref=27.2):
     
     df_c = {
         
-        "dataset"      : [],
-        "idx_c"        : [],
-        "area_c"       : [],
-        "numb_v"       : [],
-        "dens_v"       : [],
-        "area_v_avg"   : [],
-        "ints_v_avg"   : [],
-        "dist_v_j_avg" : [],
-        "dist_v_m_avg" : [],
+        "dataset"    : [],
+        "idx_c"      : [],
+        "area_c"     : [],
+        "numb_v"     : [],
+        "dens_v"     : [],
+        "area_v_avg" : [],
+        "ints_v_avg" : [],
+        "dist_v_avg" : [],
         
         }
     
@@ -341,17 +335,15 @@ def get_cell_results(prp, mskl, df_resv, dataset="", pix_ref=27.2):
         dens_v = numb_v / area_c
         area_v_avg = df["area_v"].mean()
         ints_v_avg = df["ints_v"].mean()
-        dist_v_j_avg = df["dist_v_j"].mean()
-        dist_v_m_avg = df["dist_v_m"].mean()
-        df_c["dataset"     ].append(dataset)
-        df_c["idx_c"       ].append(idx_c)
-        df_c["area_c"      ].append(area_c)
-        df_c["numb_v"      ].append(numb_v)
-        df_c["dens_v"      ].append(dens_v)
-        df_c["area_v_avg"  ].append(area_v_avg)
-        df_c["ints_v_avg"  ].append(ints_v_avg)
-        df_c["dist_v_j_avg"].append(dist_v_j_avg) 
-        df_c["dist_v_m_avg"].append(dist_v_m_avg) 
+        dist_v_avg = df["dist_v"].mean()
+        df_c["dataset"   ].append(dataset)
+        df_c["idx_c"     ].append(idx_c)
+        df_c["area_c"    ].append(area_c)
+        df_c["numb_v"    ].append(numb_v)
+        df_c["dens_v"    ].append(dens_v)
+        df_c["area_v_avg"].append(area_v_avg)
+        df_c["ints_v_avg"].append(ints_v_avg)
+        df_c["dist_v_avg"].append(dist_v_avg)    
     
     return pd.DataFrame(df_c)
 
