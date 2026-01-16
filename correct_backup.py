@@ -1,6 +1,5 @@
 #%% Imports -------------------------------------------------------------------
 
-import pickle
 import numpy as np
 from skimage import io
 from functools import partial
@@ -86,12 +85,6 @@ class Correct:
         else:
             self.vwr.layers[self.active].selected_label = value
             
-    def remove_cell(self):
-        pass
-            
-    def add_cell(self):
-        pass
-            
     def correct_mask(self, target):
         self.update()
         self.active = target
@@ -113,8 +106,6 @@ class Correct:
         
         self.view = 0
         self.active = "prp"
-        self.lbl_add = []
-        self.lbl_del = []
 
         for key, val in self.parameters.items():
             if not isinstance(val, dict):
@@ -206,26 +197,16 @@ class Correct:
         @self.vwr.mouse_drag_callbacks.append
         def mouse_actions(vwr, event):
             if "Control" in event.modifiers:
-
                 if event.button == 1:
-                    self.vwr.layers["mskj"].mode = "pan_zoom"
-                    coords = np.round(event.position).astype(int)
-                    lbl = self.mskl_all[tuple(coords)]
-                    if lbl not in self.lbl_add:
-                        self.lbl_add.append(lbl)
-                    self.update()
+                    self.fill()
                     yield
-                    self.paint() 
-
+                    self.paint()     
                 if event.button == 2:
-                    self.vwr.layers["mskj"].mode = "pan_zoom"
-                    coords = np.round(event.position).astype(int)
-                    lbl = self.mskl_all[tuple(coords)]
-                    if lbl not in self.lbl_del:
-                        self.lbl_del.append(lbl)
-                    self.update()
+                    self.set_label(0)
+                    self.fill()
                     yield
-                    self.paint()
+                    self.set_label()
+                    self.paint()   
             else:
                 if event.button == 2:
                     self.erase()
@@ -238,27 +219,21 @@ class Correct:
 
         self.nviews = len(self.prp_img_paths)
         
-        # Load data        
+        # Load data
         for tag in ["prp", "prd", "msk", "out"]:
             setattr(self, f"{tag}s", []) 
             for view in range(self.nviews):
                 if tag == "prp":
                     for path in getattr(self, f"{tag}_img_paths"):
                         if f"{view:02d}" in path.name:
-                            getattr(self, f"{tag}s").append(io.imread(path))                
-                elif tag == "prd" and self.load_prd:
-                    tmp_dict = {}
-                    for path in getattr(self, f"{tag}_img_paths"):
-                        if f"{view:02d}" in path.name:
-                            tmp_dict[f"{path.stem.split('_')[1]}"] = io.imread(path)
-                    getattr(self, f"{tag}s").append(tmp_dict)
+                            getattr(self, f"{tag}s").append(io.imread(path))
                 else:
                     tmp_dict = {}
                     for path in getattr(self, f"{tag}_img_paths"):
                         if f"{view:02d}" in path.name:
                             tmp_dict[f"{path.stem.split('_')[1]}"] = io.imread(path)
                     getattr(self, f"{tag}s").append(tmp_dict)
-                    
+         
         # Fill out data if empty
         for view in range(self.nviews):
             if not self.outs[view]:
@@ -273,7 +248,7 @@ class Correct:
         
         self.prp = self.prps[self.view]
         for tag0 in ["prd", "out"]:
-            if tag0 == "prd" and self.load_prd:
+            if tag0 == "prd":
                 for tag1 in ["cells", "nuclei", "vesicles"]:
                     setattr(
                         self, f"{tag0}{tag1[0]}", 
@@ -296,7 +271,7 @@ class Correct:
                     getattr(self, tag0), 
                     **layer_config[tag0]
                     ) 
-            elif tag0 == "prd" and self.load_prd:
+            elif tag0 == "prd":
                 for tag1 in ["cells", "nuclei", "vesicles"]:
                     self.vwr.add_image(
                         getattr(self, f"{tag0}{tag1[0]}"),
@@ -323,7 +298,7 @@ class Correct:
         for tag0 in ["prp", "prd", "msk"]:
             if tag0 == "prp":
                 self.vwr.layers["prp"].data = self.prp
-            elif tag0 == "prd" and self.load_prd:
+            elif tag0 == "prd":
                 for tag1 in ["cells", "nuclei", "vesicles"]:
                     self.vwr.layers[f"{tag0}{tag1[0]}"].data = (
                         getattr(self, f"{tag0}{tag1[0]}"))
@@ -342,23 +317,19 @@ class Correct:
         self.save_hc()
 
     def update_masks(self):
+        
         for name in self.vwr.layers:
             name = str(name)
             if name in ["mskn", "mskv", "mskj"]:
                 setattr(self, name, self.vwr.layers[name].data > 0)
             else:
                 setattr(self, name, self.vwr.layers[name].data)
+        
         sync_masks(self.mskc, self.mskn, self.mskv)
+        
         self.update_layers()
     
     def update_labels(self):
-        
-        self.lbl_slc = list(np.unique(self.mskl)[1:])
-        if self.lbl_add and self.lbl_add not in self.lbl_slc:
-            self.lbl_slc.append(self.lbl_add)
-        if self.lbl_del and self.lbl_del in self.lbl_slc:
-            self.lbl_slc.remove(self.lbl_del)
-                
         self.mskl = self.mskc > 0
         self.mskj = self.vwr.layers["mskj"].data
         self.mskj = skeletonize_junctions(self.mskj, 10) * label_config["mskj"]                                 
@@ -367,29 +338,9 @@ class Correct:
         self.mskl = label(self.mskl > 0, connectivity=1).astype("uint8")
         self.mskl = remove_small_objects(
             self.mskl, min_size=self.parameters["mask_params"]["cells"][1])
-        
-        self.lbl_all = np.unique(self.mskl)[1:]
-        self.mskl_all = self.mskl.copy()
-        
-        for lbl in self.lbl_all:
-            if lbl not in self.lbl_all:
-                self.mskl[self.mskl == lbl] = 0
-        
-        # unique1 = np.unique(self.mskl)[1:]
-        
-        # for lbl in self.discard:
-        #     self.mskl[self.mskl == lbl] = 0
-        
-        # for lbl in np.setdiff1d(unique1, unique0):
-        #     if lbl not in self.discard:
-        #         self.discard.append(lbl)
-                
-        # for lbl in self.discard:
-        #     self.mskl[self.mskl == lbl] = 0
-
         self.vwr.layers["mskj"].data = self.mskj
         self.vwr.layers["mskl"].data = self.mskl
-
+        
     def save_hc(self):
         for name in self.vwr.layers:
             name = str(name)

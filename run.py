@@ -39,14 +39,17 @@ parameters = {
     "tiles_hw"     : 24,
     "tiles_ratio"  : 0.5,
     
-    # Process
+    # Mask
     "mask_params"  : {
         "cells"    : (0.5, 1e4, 128),
         "nuclei"   : (0.5, 1e3, 128),
         "vesicles" : (0.25, 8, 4),
         },
     
-    # Merge
+    # Correct
+    "load_prd"     : False,
+    
+    # Analyse
     "conditions"   : ["ins1e", "gigyf12"],
     "conds_color"  : ["red", "blue"], 
     

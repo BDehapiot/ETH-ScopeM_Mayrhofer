@@ -1,6 +1,5 @@
 #%% Imports -------------------------------------------------------------------
 
-import pickle
 import numpy as np
 from skimage import io
 from functools import partial
@@ -113,8 +112,6 @@ class Correct:
         
         self.view = 0
         self.active = "prp"
-        self.lbl_add = []
-        self.lbl_del = []
 
         for key, val in self.parameters.items():
             if not isinstance(val, dict):
@@ -206,26 +203,16 @@ class Correct:
         @self.vwr.mouse_drag_callbacks.append
         def mouse_actions(vwr, event):
             if "Control" in event.modifiers:
-
                 if event.button == 1:
-                    self.vwr.layers["mskj"].mode = "pan_zoom"
-                    coords = np.round(event.position).astype(int)
-                    lbl = self.mskl_all[tuple(coords)]
-                    if lbl not in self.lbl_add:
-                        self.lbl_add.append(lbl)
-                    self.update()
+                    self.fill()
                     yield
-                    self.paint() 
-
+                    self.paint()     
                 if event.button == 2:
-                    self.vwr.layers["mskj"].mode = "pan_zoom"
-                    coords = np.round(event.position).astype(int)
-                    lbl = self.mskl_all[tuple(coords)]
-                    if lbl not in self.lbl_del:
-                        self.lbl_del.append(lbl)
-                    self.update()
+                    self.set_label(0)
+                    self.fill()
                     yield
-                    self.paint()
+                    self.set_label()
+                    self.paint()   
             else:
                 if event.button == 2:
                     self.erase()
@@ -352,13 +339,6 @@ class Correct:
         self.update_layers()
     
     def update_labels(self):
-        
-        self.lbl_slc = list(np.unique(self.mskl)[1:])
-        if self.lbl_add and self.lbl_add not in self.lbl_slc:
-            self.lbl_slc.append(self.lbl_add)
-        if self.lbl_del and self.lbl_del in self.lbl_slc:
-            self.lbl_slc.remove(self.lbl_del)
-                
         self.mskl = self.mskc > 0
         self.mskj = self.vwr.layers["mskj"].data
         self.mskj = skeletonize_junctions(self.mskj, 10) * label_config["mskj"]                                 
@@ -367,29 +347,9 @@ class Correct:
         self.mskl = label(self.mskl > 0, connectivity=1).astype("uint8")
         self.mskl = remove_small_objects(
             self.mskl, min_size=self.parameters["mask_params"]["cells"][1])
-        
-        self.lbl_all = np.unique(self.mskl)[1:]
-        self.mskl_all = self.mskl.copy()
-        
-        for lbl in self.lbl_all:
-            if lbl not in self.lbl_all:
-                self.mskl[self.mskl == lbl] = 0
-        
-        # unique1 = np.unique(self.mskl)[1:]
-        
-        # for lbl in self.discard:
-        #     self.mskl[self.mskl == lbl] = 0
-        
-        # for lbl in np.setdiff1d(unique1, unique0):
-        #     if lbl not in self.discard:
-        #         self.discard.append(lbl)
-                
-        # for lbl in self.discard:
-        #     self.mskl[self.mskl == lbl] = 0
-
         self.vwr.layers["mskj"].data = self.mskj
         self.vwr.layers["mskl"].data = self.mskl
-
+        
     def save_hc(self):
         for name in self.vwr.layers:
             name = str(name)
