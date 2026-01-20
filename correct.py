@@ -85,12 +85,20 @@ class Correct:
             self.vwr.layers[self.active].selected_label = label_config[self.active]
         else:
             self.vwr.layers[self.active].selected_label = value
+                      
+    def load_discard(self):
+        path = self.out_path / f"discard_{self.view:02d}.pkl"
+        if not path.exists():
+            self.discard = []
+            self.save_discard()
+        else:
+            with open(path, "rb") as file:
+                self.discard = pickle.load(file)
             
-    def remove_cell(self):
-        pass
-            
-    def add_cell(self):
-        pass
+    def save_discard(self):
+        path = self.out_path / f"discard_{self.view:02d}.pkl"
+        with open(path, "wb") as file:
+            pickle.dump(self.discard, file)
             
     def correct_mask(self, target):
         self.update()
@@ -113,8 +121,6 @@ class Correct:
         
         self.view = 0
         self.active = "prp"
-        self.lbl_add = []
-        self.lbl_del = []
 
         for key, val in self.parameters.items():
             if not isinstance(val, dict):
@@ -128,7 +134,7 @@ class Correct:
         for tag in ["prp", "prd", "msk", "out"]:
             setattr(self, f"{tag}_path", self.data_path / f"{tag}") 
             img_paths = list(getattr(self, f"{tag}_path").glob("*.tif"))
-            setattr(self, f"{tag}_img_paths", img_paths) 
+            setattr(self, f"{tag}_img_paths", img_paths)            
 
 #%% Class(Correct) : viewer ---------------------------------------------------
 
@@ -206,25 +212,33 @@ class Correct:
         @self.vwr.mouse_drag_callbacks.append
         def mouse_actions(vwr, event):
             if "Control" in event.modifiers:
-
                 if event.button == 1:
-                    self.vwr.layers["mskj"].mode = "pan_zoom"
-                    coords = np.round(event.position).astype(int)
-                    lbl = self.mskl_all[tuple(coords)]
-                    if lbl not in self.lbl_add:
-                        self.lbl_add.append(lbl)
+                    if self.active == "mskj":
+                        self.vwr.layers["mskj"].mode = "pan_zoom"
+                        coords = np.round(event.position).astype(int)
+                        lbl = self.mskl_all[tuple(coords)]
+                        if lbl in self.discard:
+                            self.discard.remove(lbl)
+                        self.save_discard()
+                    else:
+                        self.fill()
                     self.update()
                     yield
-                    self.paint() 
-
+                    self.paint()
                 if event.button == 2:
-                    self.vwr.layers["mskj"].mode = "pan_zoom"
-                    coords = np.round(event.position).astype(int)
-                    lbl = self.mskl_all[tuple(coords)]
-                    if lbl not in self.lbl_del:
-                        self.lbl_del.append(lbl)
+                    if self.active == "mskj":
+                        self.vwr.layers["mskj"].mode = "pan_zoom"
+                        coords = np.round(event.position).astype(int)
+                        lbl = self.mskl_all[tuple(coords)]
+                        if lbl not in self.discard:
+                            self.discard.append(lbl)
+                        self.save_discard()
+                    else:
+                        self.set_label(0)
+                        self.fill()
                     self.update()
                     yield
+                    self.set_label()
                     self.paint()
             else:
                 if event.button == 2:
@@ -285,7 +299,7 @@ class Correct:
                         self, f"msk{tag1[0]}", 
                         getattr(self, f"{tag0}s")[self.view][tag1],
                         )
-     
+             
 #%% Class(Correct) : layers ---------------------------------------------------
 
     def init_layers(self):  
@@ -353,12 +367,6 @@ class Correct:
     
     def update_labels(self):
         
-        self.lbl_slc = list(np.unique(self.mskl)[1:])
-        if self.lbl_add and self.lbl_add not in self.lbl_slc:
-            self.lbl_slc.append(self.lbl_add)
-        if self.lbl_del and self.lbl_del in self.lbl_slc:
-            self.lbl_slc.remove(self.lbl_del)
-                
         self.mskl = self.mskc > 0
         self.mskj = self.vwr.layers["mskj"].data
         self.mskj = skeletonize_junctions(self.mskj, 10) * label_config["mskj"]                                 
@@ -367,26 +375,13 @@ class Correct:
         self.mskl = label(self.mskl > 0, connectivity=1).astype("uint8")
         self.mskl = remove_small_objects(
             self.mskl, min_size=self.parameters["mask_params"]["cells"][1])
-        
-        self.lbl_all = np.unique(self.mskl)[1:]
         self.mskl_all = self.mskl.copy()
-        
-        for lbl in self.lbl_all:
-            if lbl not in self.lbl_all:
+                
+        self.load_discard()
+        for lbl in np.unique(self.mskl):
+            if lbl in self.discard:
                 self.mskl[self.mskl == lbl] = 0
         
-        # unique1 = np.unique(self.mskl)[1:]
-        
-        # for lbl in self.discard:
-        #     self.mskl[self.mskl == lbl] = 0
-        
-        # for lbl in np.setdiff1d(unique1, unique0):
-        #     if lbl not in self.discard:
-        #         self.discard.append(lbl)
-                
-        # for lbl in self.discard:
-        #     self.mskl[self.mskl == lbl] = 0
-
         self.vwr.layers["mskj"].data = self.mskj
         self.vwr.layers["mskl"].data = self.mskl
 
@@ -415,3 +410,4 @@ if __name__ == "__main__":
     prds = correct.prds
     msks = correct.msks
     outs = correct.outs
+    discard = correct.discard

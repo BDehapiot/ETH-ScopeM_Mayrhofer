@@ -5,10 +5,10 @@ from pathlib import Path
 
 #%% Inputs (Main) -------------------------------------------------------------
 
-# dataset = "gigyf12_dko_1.7nm"
+dataset = "gigyf12_dko_1.7nm"
 # dataset = "gigyf12_dko_3.25nm_00"
 # dataset = "gigyf12_dko_3.25nm_01"
-dataset = "ins1e_wt_1.7nm"
+# dataset = "ins1e_wt_1.7nm"
 # dataset = "ins1e_wt_3.25nm_00"
 # dataset = "ins1e_wt_3.25nm_01"
 
