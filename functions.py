@@ -20,7 +20,7 @@ from skimage.transform import rescale
 from skimage.measure import label, regionprops
 from skimage.segmentation import find_boundaries
 from skimage.morphology import (
-    remove_small_objects, remove_small_holes, skeletonize)
+    remove_small_objects, remove_small_holes, skeletonize, binary_dilation)
 
 # scipy
 from scipy.ndimage import distance_transform_edt
@@ -294,19 +294,40 @@ def get_vesicle_results(prp, mskv, mskj, mskl, dataset="", pix_ref=27.2):
         "ints_v"    : [],
         "dist_v_j"  : [],
         "dist_v_m"  : [],
+        "dist_v_a"  : [],
 
         }
     
-    edt_j = distance_transform_edt(mskj == 0)
-    edt_m = distance_transform_edt(~find_boundaries(mskl))
+    # Process masks
+    msk1 = remove_small_holes(
+        mskl > 0, area_threshold=4096, connectivity=2)
+    msk2 = find_boundaries(msk1, mode="inner")
+    msk3 = binary_dilation(mskj)
+    mskm = msk2 & ~msk3
+    mska = mskj | mskm
+    mskv[mskl == 0] = 0
+    
+    # Distance transforms
+    edtj = distance_transform_edt(mskj == 0)
+    edtm = distance_transform_edt(mskm == 0)
+    edta = distance_transform_edt(mska == 0)
+    
+    # Clear "no junctions" cells
+    for props in regionprops(label(mskl), intensity_image=msk3):
+        if props.intensity_max == 0:
+            coords = props.coords
+            edtj[tuple(coords.T)] = np.nan
+    
+    # Measure vesicles
     for props in regionprops(label(mskv)):
         coords = props.coords
         idx_v = props.label
         idx_c = np.max(mskl[tuple(coords.T)])
         area_v = props.area * ((pix_ref * 1e-3) ** 2)
         ints_v = np.mean(prp[tuple(coords.T)])
-        dist_v_j = np.mean(edt_j[tuple(coords.T)]) * pix_ref * 1e-3
-        dist_v_m = np.mean(edt_m[tuple(coords.T)]) * pix_ref * 1e-3
+        dist_v_j = np.mean(edtj[tuple(coords.T)]) * pix_ref * 1e-3
+        dist_v_m = np.mean(edtm[tuple(coords.T)]) * pix_ref * 1e-3
+        dist_v_a = np.mean(edta[tuple(coords.T)]) * pix_ref * 1e-3
         df_v["dataset"  ].append(dataset)
         df_v["idx_v"    ].append(idx_v)
         df_v["idx_c"    ].append(idx_c)
@@ -314,6 +335,7 @@ def get_vesicle_results(prp, mskv, mskj, mskl, dataset="", pix_ref=27.2):
         df_v["ints_v"   ].append(ints_v)
         df_v["dist_v_j" ].append(dist_v_j)
         df_v["dist_v_m" ].append(dist_v_m)
+        df_v["dist_v_a" ].append(dist_v_a)
 
     return pd.DataFrame(df_v)
 
@@ -330,9 +352,11 @@ def get_cell_results(prp, mskl, df_resv, dataset="", pix_ref=27.2):
         "ints_v_avg"   : [],
         "dist_v_j_avg" : [],
         "dist_v_m_avg" : [],
+        "dist_v_a_avg" : [],
         
         }
     
+    # Measure cells
     for props in regionprops(label(mskl)):
         idx_c = props.label
         df = df_resv[df_resv["idx_c"] == idx_c]
@@ -343,6 +367,7 @@ def get_cell_results(prp, mskl, df_resv, dataset="", pix_ref=27.2):
         ints_v_avg = df["ints_v"].mean()
         dist_v_j_avg = df["dist_v_j"].mean()
         dist_v_m_avg = df["dist_v_m"].mean()
+        dist_v_a_avg = df["dist_v_a"].mean()
         df_c["dataset"     ].append(dataset)
         df_c["idx_c"       ].append(idx_c)
         df_c["area_c"      ].append(area_c)
@@ -350,8 +375,9 @@ def get_cell_results(prp, mskl, df_resv, dataset="", pix_ref=27.2):
         df_c["dens_v"      ].append(dens_v)
         df_c["area_v_avg"  ].append(area_v_avg)
         df_c["ints_v_avg"  ].append(ints_v_avg)
-        df_c["dist_v_j_avg"].append(dist_v_j_avg) 
+        df_c["dist_v_j_avg"].append(dist_v_j_avg)
         df_c["dist_v_m_avg"].append(dist_v_m_avg) 
+        df_c["dist_v_a_avg"].append(dist_v_a_avg) 
     
     return pd.DataFrame(df_c)
 
@@ -382,24 +408,29 @@ def plot_results(
     
     tags = [
         "area_c", "numb_v", "dens_v",
-        "area_v_avg", "ints_v_avg", "dist_v_avg",
-        "dist_v",
+        "area_v_avg", "ints_v_avg", 
+        "dist_v_j_avg", "dist_v_m_avg", "dist_v_a_avg",
+        "dist_v_j", "dist_v_m", "dist_v_a",
         ]
     
     titles = [
         "cell area", "vesicle number", "vesicle density",
-        "vesicle area", "vesicle intensity", "vesicle distance",
-        "vesicle distance distribution",
+        "vesicle area", "vesicle intensity", 
+        "vesicle dist. j", "vesicle dist. m", "vesicle dist. a",
+        "vesicle dist. j distribution",
+        "vesicle dist. m distribution",
+        "vesicle dist. a distribution",
         ]
     
     labels = [
         "area (µm²)", "count", "count.µm-2",
-        "area (µm²)", "intensity (A.U.)", "distance (µm)",
-        "count",
+        "area (µm²)", "intensity (A.U.)", 
+        "distance (µm)", "distance (µm)", "distance (µm)",
+        "count", "count", "count",
         ]
     
     # Initialize plot
-    fig = plt.figure(figsize=(6, 8))  
+    fig = plt.figure(figsize=(6, 12))  
     fig.suptitle(
         (
         f"n cells = {len(df_all_c)}\n"
@@ -408,21 +439,25 @@ def plot_results(
         fontsize=12, x=0.03, ha="left"
         )
     
-    gs = fig.add_gridspec(4, 3)
+    gs = fig.add_gridspec(6, 3)
     axes = [
-        fig.add_subplot(gs[0,  0]),
-        fig.add_subplot(gs[0,  1]),
-        fig.add_subplot(gs[0,  2]),
-        fig.add_subplot(gs[1,  0]),
-        fig.add_subplot(gs[1,  1]),
-        fig.add_subplot(gs[1,  2]),
-        fig.add_subplot(gs[2:, :]),
+        fig.add_subplot(gs[0, 0]),
+        fig.add_subplot(gs[0, 1]),
+        fig.add_subplot(gs[0, 2]),
+        fig.add_subplot(gs[1, 0]),
+        fig.add_subplot(gs[1, 1]),
+        fig.add_subplot(gs[2, 0]),
+        fig.add_subplot(gs[2, 1]),
+        fig.add_subplot(gs[2, 2]),
+        fig.add_subplot(gs[3, :]),
+        fig.add_subplot(gs[4, :]),
+        fig.add_subplot(gs[5, :]),
         ]
     
     for t, (ax, tag) in enumerate(zip(axes, tags)):
         for c, cnd in enumerate(conditions):    
             
-            if t < 6:
+            if t < 8:
 
                 # Data
                 avg, sem = (
@@ -455,7 +490,7 @@ def plot_results(
                     )
                 
                 # Formatting
-                ax.set_xlim(-0.2, 16.2)
+                ax.set_xlim(-0.2, 10.2)
                 ax.set_xlabel("distance (µm)")
                 ax.set_ylabel(labels[t])
                 ax.set_title(titles[t])
@@ -464,3 +499,10 @@ def plot_results(
     plt.tight_layout() 
     
     return fig
+
+#%% Execute -------------------------------------------------------------------
+
+if __name__ == "__main__":
+    from main import Main
+    from run import parameters, procedure
+    main = Main(procedure=procedure, parameters=parameters)

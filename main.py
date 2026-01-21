@@ -326,9 +326,3 @@ class Main:
 if __name__ == "__main__":
     from run import parameters, procedure
     main = Main(procedure=procedure, parameters=parameters)
-    # resv_paths = main.resv_paths
-    # resc_paths = main.resc_paths
-    # df_all_v = main.df_all_v
-    # df_all_c = main.df_all_c
-    # df_cnd_avg_v = main.df_cnd_avg_v
-    # df_cnd_avg_c = main.df_cnd_avg_c

@@ -5,12 +5,12 @@ from pathlib import Path
 
 #%% Inputs (Main) -------------------------------------------------------------
 
-dataset = "gigyf12_dko_1.7nm"
+# dataset = "gigyf12_dko_1.7nm"
 # dataset = "gigyf12_dko_3.25nm_00"
 # dataset = "gigyf12_dko_3.25nm_01"
 # dataset = "ins1e_wt_1.7nm"
 # dataset = "ins1e_wt_3.25nm_00"
-# dataset = "ins1e_wt_3.25nm_01"
+dataset = "ins1e_wt_3.25nm_01"
 
 procedure = {
     
@@ -18,9 +18,9 @@ procedure = {
     "prepare" : 0,
     "predict" : 0,
     "mask"    : 0,
-    "correct" : 1,
+    "correct" : 0,
     "measure" : 0,
-    "analyse" : 0,
+    "analyse" : 1,
 
     }
 

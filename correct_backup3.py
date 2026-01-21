@@ -100,11 +100,6 @@ class Correct:
         with open(path, "wb") as file:
             pickle.dump(self.discard, file)
             
-    def reset_discard(self):
-        self.discard = []
-        self.save_discard()
-        self.update()
-            
     def correct_mask(self, target):
         self.update()
         self.active = target
@@ -160,24 +155,19 @@ class Correct:
         # Create "action" menu
         act_group_box = QGroupBox("action")
         act_group_layout = QVBoxLayout()
-        for tag0 in ["update", "reset", "correct"]:
+        for tag0 in ["update", "correct"]:
             if tag0 == "update":
                 setattr(self, f"btn_{tag0}", QPushButton(f"{tag0}"))
                 act_group_layout.addWidget(getattr(self, f"btn_{tag0}"))
                 getattr(self, f"btn_{tag0}").clicked.connect(
                     partial(self.update))
-            elif tag0 == "reset":
-                setattr(self, f"btn_{tag0}", QPushButton(f"{tag0}"))
-                act_group_layout.addWidget(getattr(self, f"btn_{tag0}"))
-                getattr(self, f"btn_{tag0}").clicked.connect(
-                    partial(self.reset_discard))
             else:
                 for tag1 in ["cells", "nuclei", "vesicles", "junctions"]:
                     setattr(self, f"btn_{tag0}{tag1[0]}", QPushButton(f"{tag0} {tag1}"))
                     act_group_layout.addWidget(getattr(self, f"btn_{tag0}{tag1[0]}"))
                     getattr(self, f"btn_{tag0}{tag1[0]}").clicked.connect(
                         partial(self.correct_mask, f"msk{tag1[0]}"))
-                
+        
         # Create layout
         self.layout = QVBoxLayout()
         slc_group_box.setLayout(slc_group_layout)
@@ -416,3 +406,8 @@ class Correct:
 if __name__ == "__main__":
     from run import parameters, procedure
     correct = Correct(procedure=procedure, parameters=parameters)
+    prps = correct.prps
+    prds = correct.prds
+    msks = correct.msks
+    outs = correct.outs
+    discard = correct.discard
