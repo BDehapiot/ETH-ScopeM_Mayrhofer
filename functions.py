@@ -283,11 +283,12 @@ def skeletonize_junctions(mskj, pad_width):
 
 #%% Function(s) : measure() ---------------------------------------------------
 
-def get_vesicle_results(prp, mskv, mskj, mskl, dataset="", pix_ref=27.2):
+def get_vesicle_results(prp, mskv, mskj, mskl, view, dataset="", pix_ref=27.2):
     
     df_v = {
         
         "dataset"   : [],
+        "view"      : [],
         "idx_c"     : [],
         "idx_v"     : [],
         "area_v"    : [],
@@ -329,6 +330,7 @@ def get_vesicle_results(prp, mskv, mskj, mskl, dataset="", pix_ref=27.2):
         dist_v_m = np.mean(edtm[tuple(coords.T)]) * pix_ref * 1e-3
         dist_v_a = np.mean(edta[tuple(coords.T)]) * pix_ref * 1e-3
         df_v["dataset"  ].append(dataset)
+        df_v["view"     ].append(view)
         df_v["idx_v"    ].append(idx_v)
         df_v["idx_c"    ].append(idx_c)
         df_v["area_v"   ].append(area_v)
@@ -339,11 +341,12 @@ def get_vesicle_results(prp, mskv, mskj, mskl, dataset="", pix_ref=27.2):
 
     return pd.DataFrame(df_v)
 
-def get_cell_results(prp, mskl, df_resv, dataset="", pix_ref=27.2):
+def get_cell_results(prp, mskl, df_resv, view, dataset="", pix_ref=27.2):
     
     df_c = {
         
         "dataset"      : [],
+        "view"         : [],
         "idx_c"        : [],
         "area_c"       : [],
         "numb_v"       : [],
@@ -369,6 +372,7 @@ def get_cell_results(prp, mskl, df_resv, dataset="", pix_ref=27.2):
         dist_v_m_avg = df["dist_v_m"].mean()
         dist_v_a_avg = df["dist_v_a"].mean()
         df_c["dataset"     ].append(dataset)
+        df_c["view"        ].append(view)
         df_c["idx_c"       ].append(idx_c)
         df_c["area_c"      ].append(area_c)
         df_c["numb_v"      ].append(numb_v)

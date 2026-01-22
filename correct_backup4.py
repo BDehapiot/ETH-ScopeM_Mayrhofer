@@ -1,5 +1,6 @@
 #%% Imports -------------------------------------------------------------------
 
+import pickle
 import numpy as np
 from skimage import io
 from functools import partial
@@ -11,9 +12,8 @@ from functions import sync_masks, skeletonize_junctions
 from config import label_config, layer_config
 
 # Skimage
-from skimage.measure import label, regionprops
+from skimage.measure import label
 from skimage.morphology import remove_small_objects
-from skimage.segmentation import relabel_sequential
 
 # napari
 import napari
@@ -85,6 +85,25 @@ class Correct:
             self.vwr.layers[self.active].selected_label = label_config[self.active]
         else:
             self.vwr.layers[self.active].selected_label = value
+                      
+    def load_discard(self):
+        path = self.out_path / f"discard_{self.view:02d}.pkl"
+        if not path.exists():
+            self.discard = []
+            self.save_discard()
+        else:
+            with open(path, "rb") as file:
+                self.discard = pickle.load(file)
+            
+    def save_discard(self):
+        path = self.out_path / f"discard_{self.view:02d}.pkl"
+        with open(path, "wb") as file:
+            pickle.dump(self.discard, file)
+            
+    def reset_discard(self):
+        self.discard = []
+        self.save_discard()
+        self.update()
             
     def correct_mask(self, target):
         self.update()
@@ -96,7 +115,6 @@ class Correct:
             else:
                 self.vwr.layers[name].visible = 0
         if target == "mskj":
-            self.vwr.layers["mskd"].visible = 1
             self.vwr.layers["mskl"].visible = 1
         self.set_active()
         self.set_label()
@@ -142,12 +160,17 @@ class Correct:
         # Create "action" menu
         act_group_box = QGroupBox("action")
         act_group_layout = QVBoxLayout()
-        for tag0 in ["update", "correct"]:
+        for tag0 in ["update", "reset", "correct"]:
             if tag0 == "update":
                 setattr(self, f"btn_{tag0}", QPushButton(f"{tag0}"))
                 act_group_layout.addWidget(getattr(self, f"btn_{tag0}"))
                 getattr(self, f"btn_{tag0}").clicked.connect(
                     partial(self.update))
+            elif tag0 == "reset":
+                setattr(self, f"btn_{tag0}", QPushButton(f"{tag0}"))
+                act_group_layout.addWidget(getattr(self, f"btn_{tag0}"))
+                getattr(self, f"btn_{tag0}").clicked.connect(
+                    partial(self.reset_discard))
             else:
                 for tag1 in ["cells", "nuclei", "vesicles", "junctions"]:
                     setattr(self, f"btn_{tag0}{tag1[0]}", QPushButton(f"{tag0} {tag1}"))
@@ -196,33 +219,37 @@ class Correct:
         def update_key(viewer):
             self.update() 
             
-        @self.vwr.bind_key("Shift", overwrite=True)
-        def discard_layer(viewer):
-            if self.active == "mskj":
-                self.active = "mskd"
-                self.set_active()
-                self.set_label()
-                self.paint()
-                self.vwr.layers["mskd"].brush_size = (
-                    self.vwr.layers["mskj"].brush_size)
-                yield
-                self.active = "mskj"
-                self.set_active()
-                self.set_label()
-
         @self.vwr.mouse_drag_callbacks.append
         def mouse_actions(vwr, event):
             if "Control" in event.modifiers:
                 if event.button == 1:
-                    self.fill()
+                    if self.active == "mskj":
+                        self.vwr.layers["mskj"].mode = "pan_zoom"
+                        coords = np.round(event.position).astype(int)
+                        lbl = self.mskl_all[tuple(coords)]
+                        if lbl in self.discard:
+                            self.discard.remove(lbl)
+                        self.save_discard()
+                    else:
+                        self.fill()
+                    self.update()
                     yield
-                    self.paint()     
+                    self.paint()
                 if event.button == 2:
-                    self.set_label(0)
-                    self.fill()
+                    if self.active == "mskj":
+                        self.vwr.layers["mskj"].mode = "pan_zoom"
+                        coords = np.round(event.position).astype(int)
+                        lbl = self.mskl_all[tuple(coords)]
+                        if lbl not in self.discard:
+                            self.discard.append(lbl)
+                        self.save_discard()
+                    else:
+                        self.set_label(0)
+                        self.fill()
+                    self.update()
                     yield
                     self.set_label()
-                    self.paint()   
+                    self.paint()
             else:
                 if event.button == 2:
                     self.erase()
@@ -262,9 +289,8 @@ class Correct:
                 for tag in ["cells", "nuclei", "vesicles"]:
                     self.outs[view][tag] = self.msks[view][tag]
                 self.outs[view]["junctions"] = np.zeros_like(self.msks[view]["cells"])
-                self.outs[view]["discard"] = np.zeros_like(self.msks[view]["cells"])
                 self.outs[view]["labels"] = label(self.msks[view]["cells"])
-                
+        
         self.update_views()
         
     def update_views(self):
@@ -278,10 +304,7 @@ class Correct:
                         getattr(self, f"{tag0}s")[self.view][tag1],
                         )
             elif tag0 == "out":
-                for tag1 in [
-                        "cells", "nuclei", "vesicles", 
-                        "junctions", "discard", "labels"
-                        ]:
+                for tag1 in ["cells", "nuclei", "vesicles", "junctions", "labels"]:
                     setattr(
                         self, f"msk{tag1[0]}", 
                         getattr(self, f"{tag0}s")[self.view][tag1],
@@ -304,10 +327,7 @@ class Correct:
                         **layer_config[f"{tag0}{tag1[0]}"]
                         ) 
             elif tag0 == "msk":
-                for tag1 in [
-                        "cells", "nuclei", "vesicles", 
-                        "junctions", "discard", "labels"
-                        ]:
+                for tag1 in ["cells", "nuclei", "vesicles", "junctions", "labels"]:
                     self.vwr.add_labels(
                         getattr(self, f"{tag0}{tag1[0]}") 
                         * label_config[f"{tag0}{tag1[0]}"], 
@@ -332,10 +352,7 @@ class Correct:
                     self.vwr.layers[f"{tag0}{tag1[0]}"].data = (
                         getattr(self, f"{tag0}{tag1[0]}"))
             elif tag0 == "msk":
-                for tag1 in [
-                        "cells", "nuclei", "vesicles", 
-                        "junctions", "discard", "labels"
-                        ]:
+                for tag1 in ["cells", "nuclei", "vesicles", "junctions", "labels"]:
                     self.vwr.layers[f"{tag0}{tag1[0]}"].data = (
                         getattr(self, f"{tag0}{tag1[0]}") 
                         * label_config[f"{tag0}{tag1[0]}"]
@@ -362,20 +379,18 @@ class Correct:
         
         self.mskl = self.mskc > 0
         self.mskj = self.vwr.layers["mskj"].data
-        self.mskd = self.vwr.layers["mskd"].data
         self.mskj = skeletonize_junctions(self.mskj, 10) * label_config["mskj"]                                 
         self.mskj[self.mskc == 0] = 0
         self.mskl[self.mskj != 0] = 0
         self.mskl = label(self.mskl > 0, connectivity=1).astype("uint8")
         self.mskl = remove_small_objects(
             self.mskl, min_size=self.parameters["mask_params"]["cells"][1])
-        self.mskl = relabel_sequential(self.mskl)[0]
-        
-        # Discard cells
-        for props in regionprops(self.mskl):
-            coords = props.coords
-            if any(self.mskd[tuple(coords.T)]) == 1:
-                self.mskl[tuple(coords.T)] = 0
+        self.mskl_all = self.mskl.copy()
+                
+        self.load_discard()
+        for lbl in np.unique(self.mskl):
+            if lbl in self.discard:
+                self.mskl[self.mskl == lbl] = 0
         
         self.vwr.layers["mskj"].data = self.mskj
         self.vwr.layers["mskl"].data = self.mskl
@@ -384,10 +399,7 @@ class Correct:
         for name in self.vwr.layers:
             name = str(name)
             view = f"{self.view:02d}"
-            for tag in [
-                    "cells", "nuclei", "vesicles",
-                    "junctions", "discard", "labels"
-                    ]:
+            for tag in ["cells", "nuclei", "vesicles", "junctions", "labels"]:
                 if name == f"msk{tag[0]}":
                     save_path = self.out_path / f"msk_{tag}_hc_{view}.tif"
                     if name == "mskl":

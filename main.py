@@ -267,11 +267,11 @@ class Main:
                 if not np.all(mskj == 0):
                     
                     df_v = get_vesicle_results(
-                        prp, mskv, mskj, mskl, 
+                        prp, mskv, mskj, mskl, view,
                         dataset=self.data_path.name, pix_ref=self.pix_ref
                         )
                     df_c = get_cell_results(
-                        prp, mskl, df_v, 
+                        prp, mskl, df_v, view,
                         dataset=self.data_path.name, pix_ref=self.pix_ref
                         )
                         
