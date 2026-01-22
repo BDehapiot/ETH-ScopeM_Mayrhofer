@@ -504,6 +504,92 @@ def plot_results(
     
     return fig
 
+def plot_distributions(
+        df_all_v, df_all_c,
+        conditions, conds_color,
+        ):
+    
+    tags = [
+        "area_c", "numb_v", "dens_v",
+        "area_v_avg", "ints_v_avg", 
+        "dist_v_j", "dist_v_m", "dist_v_a",
+        ]
+    
+    titles = [
+        "cell area", "ves. num.", "ves. dens.",
+        "ves. area", "ves. int.", 
+        "ves. dist. j", "ves. dist. m", "ves. dist. a",
+        ]
+    
+        
+    labels = [
+        "area (µm²)", "count", "count.µm-2",
+        "area (µm²)", "intensity (A.U.)", 
+        "distance (µm²)", "distance (µm²)", "distance (µm²)",
+        ]
+    
+    # Initialize plot
+    fig = plt.figure(figsize=(6, 12))  
+    fig.suptitle(
+        (
+        f"n cells = {len(df_all_c)}\n"
+        f"n vesicles = {len(df_all_v)}"
+        ), 
+        fontsize=12, x=0.03, ha="left"
+        )
+    
+    gs = fig.add_gridspec(6, 3)
+    axes = [
+        fig.add_subplot(gs[0, 0]),
+        fig.add_subplot(gs[0, 1]),
+        fig.add_subplot(gs[0, 2]),
+        fig.add_subplot(gs[1, 0]),
+        fig.add_subplot(gs[1, 1]),
+        fig.add_subplot(gs[2, 0]),
+        fig.add_subplot(gs[2, 1]),
+        fig.add_subplot(gs[2, 2]),
+        ]
+    
+    for t, (ax, tag) in enumerate(zip(axes, tags)):
+        for c, cnd in enumerate(conditions):  
+            
+            if t < 5:
+                
+                # Data
+                val = df_all_c[df_all_c["dataset"].str.contains(
+                    cnd, case=False, na=False)][tag]
+                weights = np.ones_like(val) / len(val)
+                
+                # Hist. plot
+                ax.hist(
+                    val, label=cnd, bins=30, weights=weights, alpha=0.5, 
+                    color=fcolors[f"{conds_color[c]}_40"]
+                    )
+                
+            else:
+                
+                # Data
+                val = df_all_v[df_all_v["dataset"].str.contains(
+                    cnd, case=False, na=False)][tag]
+                weights = np.ones_like(val) / len(val)
+                
+                # Hist. plot
+                ax.hist(
+                    val, label=cnd, bins=300, weights=weights, alpha=0.5, 
+                    color=fcolors[f"{conds_color[c]}_40"]
+                    )
+            
+            # Formatting
+            # ax.set_xlim(-0.2, 10.2)
+            ax.set_xlabel(labels[t])
+            ax.set_ylabel("count")
+            ax.set_title(titles[t])
+            # ax.legend(loc="upper right")
+
+    plt.tight_layout() 
+
+    return fig
+
 #%% Execute -------------------------------------------------------------------
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@ from functions import (
     load_images, normalize_images, split_images, get_shifts, stich_images,
     predict_images, get_mask,
     get_vesicle_results, get_cell_results,
-    concatenate_df, condition_avg_df, plot_results,
+    concatenate_df, condition_avg_df, plot_results, plot_distributions,
     )
 
 #%% Class(Main) ---------------------------------------------------------------
@@ -306,6 +306,12 @@ class Main:
         fig = plot_results(
             df_all_v, df_all_c, 
             df_cnd_avg_v, df_cnd_avg_c, 
+            self.conditions, self.conds_color,
+            )
+        
+        # Plot results
+        fig2 = plot_distributions(
+            df_all_v, df_all_c, 
             self.conditions, self.conds_color,
             )
         
