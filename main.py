@@ -27,6 +27,9 @@ class Main:
         # Fetch
         self.procedure  = procedure
         self.parameters = parameters
+        for key, val in self.parameters.items():
+            if not isinstance(val, dict):
+                setattr(self, key, val)
         
         # Execute
         self.initialize()
@@ -41,13 +44,8 @@ class Main:
 #%% Class(Main) : initialize() ------------------------------------------------
 
     def initialize(self):
-        
-        for key, val in self.parameters.items():
-            if not isinstance(val, dict):
-                setattr(self, key, val)
-                
-        self.root_path = self.data_path.parent
-                
+                        
+        self.data_path = self.root_path / self.dataset                
         self.raw_img_paths = list(self.data_path.glob("*.tif")) 
         for tag in ["rsc", "prp", "prd", "msk", "out"]:
             setattr(self, f"{tag}_path", self.data_path / f"{tag}") 
@@ -230,39 +228,85 @@ class Main:
         
 #%% Class(Main) : measure() ---------------------------------------------------
 
+    # def measure(self):
+        
+    #     # Nested function(s) --------------------------------------------------
+                
+    #     def _measure(prps, outs, view):
+                         
+    #         if outs[view]:
+            
+    #             # Fetch data
+    #             prp  = prps[view]
+    #             mskv = outs[view]["vesicles"]
+    #             mskj = outs[view]["junctions"]
+    #             mskl = outs[view]["labels"]
+                
+    #             if not np.all(mskj == 0):
+                    
+    #                 df_v = get_vesicle_results(
+    #                     prp, mskv, mskj, mskl, view,
+    #                     dataset=self.data_path.name, pix_ref=self.pix_ref
+    #                     )
+    #                 df_c = get_cell_results(
+    #                     prp, mskl, df_v, view, self.dist_thresh,
+    #                     dataset=self.data_path.name, pix_ref=self.pix_ref
+    #                     )
+                        
+    #                 # Save
+    #                 df_v.to_csv(
+    #                     self.out_path / f"results_vesicles_{view:02d}.csv",
+    #                     index=False
+    #                     )
+    #                 df_c.to_csv(
+    #                     self.out_path / f"results_cells_{view:02d}.csv",
+    #                     index=False
+    #                     )
+                    
+    #     # Execute -------------------------------------------------------------
+        
+    #     print(f"measure() - {self.data_path.name}")
+        
+    #     self.nviews = len(self.prp_img_paths)
+                
+    #     # Load data
+    #     prps, outs = [], []
+    #     for view in range(self.nviews):
+    #         tmp_dict = {}
+    #         for path in self.prp_img_paths:
+    #             if f"{view:02d}" in path.name:
+    #                 prps.append(io.imread(path))
+    #         for path in self.out_img_paths:
+    #             if f"{view:02d}" in path.name:
+    #                 tmp_dict[f"{path.stem.split('_')[1]}"] = io.imread(path)
+    #         outs.append(tmp_dict)
+        
+    #     t0 = time.time()
+    #     print(" - measure & save : ", end="", flush=True)
+        
+    #     Parallel(n_jobs=-1)(
+    #         delayed(_measure)(prps, outs, view)
+    #             for view in range(self.nviews)
+    #             )
+
+    #     t1 = time.time()
+    #     print(f"{t1 - t0:.3f}s")
+       
+#%% Class(Main) : measure() ---------------------------------------------------
+
     def measure(self):
         
-        print(f"measure() - {self.data_path.name}")
-        
-        self.nviews = len(self.prp_img_paths)
-        
-        # Load data
-        prps, outs = [], []
-        for view in range(self.nviews):
-            tmp_dict = {}
-            for path in self.prp_img_paths:
-                if f"{view:02d}" in path.name:
-                    prps.append(io.imread(path))
-            for path in self.out_img_paths:
-                if f"{view:02d}" in path.name:
-                    tmp_dict[f"{path.stem.split('_')[1]}"] = io.imread(path)
-            outs.append(tmp_dict)
-        self.prps = prps
-        self.outs = outs
-        
-        t0 = time.time()
-        print(" - measure & save : ", end="", flush=True)
-        
-        # Analyse
-        for view in range(self.nviews):
-                                    
-            if self.outs[view]:
+        # Nested function(s) --------------------------------------------------
+                
+        def __measure(prps, outs, view):
+                         
+            if outs[view]:
             
                 # Fetch data
-                prp  = self.prps[view]
-                mskv = self.outs[view]["vesicles"]
-                mskj = self.outs[view]["junctions"]
-                mskl = self.outs[view]["labels"]
+                prp  = prps[view]
+                mskv = outs[view]["vesicles"]
+                mskj = outs[view]["junctions"]
+                mskl = outs[view]["labels"]
                 
                 if not np.all(mskj == 0):
                     
@@ -271,7 +315,7 @@ class Main:
                         dataset=self.data_path.name, pix_ref=self.pix_ref
                         )
                     df_c = get_cell_results(
-                        prp, mskl, df_v, view,
+                        prp, mskl, df_v, view, self.dist_thresh,
                         dataset=self.data_path.name, pix_ref=self.pix_ref
                         )
                         
@@ -285,8 +329,44 @@ class Main:
                         index=False
                         )
                     
-        t1 = time.time()
-        print(f"{t1 - t0:.3f}s")
+        def _measure(self):
+            
+            print(f"measure() - {self.data_path.name}")
+            
+            self.nviews = len(self.prp_img_paths)
+                    
+            # Load data
+            prps, outs = [], []
+            for view in range(self.nviews):
+                tmp_dict = {}
+                for path in self.prp_img_paths:
+                    if f"{view:02d}" in path.name:
+                        prps.append(io.imread(path))
+                for path in self.out_img_paths:
+                    if f"{view:02d}" in path.name:
+                        tmp_dict[f"{path.stem.split('_')[1]}"] = io.imread(path)
+                outs.append(tmp_dict)
+            
+            t0 = time.time()
+            print(" - measure & save : ", end="", flush=True)
+            
+            Parallel(n_jobs=-1)(
+                delayed(__measure)(prps, outs, view)
+                    for view in range(self.nviews)
+                    )
+
+            t1 = time.time()
+            print(f"{t1 - t0:.3f}s")
+                        
+            pass
+                    
+        # Execute -------------------------------------------------------------
+        
+        datasets = [f.name for f in self.root_path.iterdir() if f.is_dir()]
+        for dataset in datasets:
+            self.dataset = dataset
+            self.initialize()
+            _measure(self)
 
 #%% Class(Main) : analyse() ---------------------------------------------------
     
@@ -303,16 +383,16 @@ class Main:
         df_cnd_avg_c = condition_avg_df(df_all_c, self.conditions)
         
         # Plot results
-        fig = plot_results(
+        fig1 = plot_results(
             df_all_v, df_all_c, 
             df_cnd_avg_v, df_cnd_avg_c, 
-            self.conditions, self.conds_color,
+            self.conditions, self.conds_color, self.dist_thresh,
             )
         
-        # Plot results
+        # Plot ditributions
         fig2 = plot_distributions(
             df_all_v, df_all_c, 
-            self.conditions, self.conds_color,
+            self.conditions, self.conds_color, self.dist_thresh,
             )
         
         # Save
@@ -324,8 +404,10 @@ class Main:
             self.root_path / "results_vesicles_cnd_avg.csv", index=True)
         df_cnd_avg_c.to_csv(
             self.root_path / "results_cells_cnd_avg.csv", index=True)
-        fig.savefig(
+        fig1.savefig(
             self.root_path / "plot_results.png", format="png")
+        fig2.savefig(
+            self.root_path / "plot_distributions.png", format="png")
         
 #%% Execute -------------------------------------------------------------------
 

@@ -5,31 +5,35 @@ from pathlib import Path
 
 #%% Inputs (Main) -------------------------------------------------------------
 
-# dataset = "gigyf12_dko_1.7nm"
-dataset = "gigyf12_dko_3.25nm_00"
-# dataset = "gigyf12_dko_3.25nm_01"
-# dataset = "ins1e_wt_1.7nm"
-# dataset = "ins1e_wt_3.25nm_00"
-# dataset = "ins1e_wt_3.25nm_01"
-
 procedure = {
     
+    # one dataset
     "rescale" : 0,
     "prepare" : 0,
     "predict" : 0,
     "mask"    : 0,
     "correct" : 0,
+    
+    # all dataset
     "measure" : 0,
     "analyse" : 1,
 
     }
 
 parameters = {
-        
+    
+    "dataset" : 
+        # "gigyf12_dko_1.7nm",
+        # "gigyf12_dko_3.25nm_00",
+        # "gigyf12_dko_3.25nm_01",
+        # "ins1e_wt_1.7nm",
+        # "ins1e_wt_3.25nm_00",
+        "ins1e_wt_3.25nm_01",
+    
     # Paths
-    "data_path" : 
-        # Path(rf"\\scopem-idadata.ethz.ch\BDehapiot\remote_Mayrhofer\data\{dataset}"),
-        Path(f"D:\local_Mayrhofer\data\{dataset}"),
+    "root_path" : 
+        # Path(r"\\scopem-idadata.ethz.ch\BDehapiot\remote_Mayrhofer\data"),
+        Path("D:\local_Mayrhofer\data"),
 
     # Rescale
     "parallel"     : False,
@@ -48,6 +52,9 @@ parameters = {
     
     # Correct
     "load_prd"     : False,
+    
+    # Measure
+    "dist_thresh"  : 0.5, # µm
     
     # Analyse
     "conditions"   : ["ins1e", "gigyf12"],

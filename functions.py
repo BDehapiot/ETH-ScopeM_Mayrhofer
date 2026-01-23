@@ -1,5 +1,9 @@
 #%% Imports -------------------------------------------------------------------
 
+import warnings
+warnings.filterwarnings("ignore", message="h5py is running against HDF5")
+
+import cv2
 import pandas as pd
 from skimage import io
 from pathlib import Path
@@ -18,12 +22,11 @@ from numpy.fft import fft2, ifft2, fftshift
 from skimage.filters import sobel
 from skimage.transform import rescale
 from skimage.measure import label, regionprops
-from skimage.segmentation import find_boundaries
 from skimage.morphology import (
-    remove_small_objects, remove_small_holes, skeletonize, binary_dilation)
+    remove_small_objects, remove_small_holes, skeletonize)
 
 # scipy
-from scipy.ndimage import distance_transform_edt
+from scipy.ndimage import binary_erosion, binary_dilation
 
 # colors
 from colors import fcolors  
@@ -283,7 +286,8 @@ def skeletonize_junctions(mskj, pad_width):
 
 #%% Function(s) : measure() ---------------------------------------------------
 
-def get_vesicle_results(prp, mskv, mskj, mskl, view, dataset="", pix_ref=27.2):
+def get_vesicle_results(
+        prp, mskv, mskj, mskl, view, dataset="", pix_ref=27.2):
     
     df_v = {
         
@@ -302,16 +306,18 @@ def get_vesicle_results(prp, mskv, mskj, mskl, view, dataset="", pix_ref=27.2):
     # Process masks
     msk1 = remove_small_holes(
         mskl > 0, area_threshold=4096, connectivity=2)
-    msk2 = find_boundaries(msk1, mode="inner")
+    msk2 = binary_erosion(msk1)
+    np.logical_xor(msk1, msk2, out=msk2)
     msk3 = binary_dilation(mskj)
     mskm = msk2 & ~msk3
     mska = mskj | mskm
-    mskv[mskl == 0] = 0
+    mskv_clean = mskv.copy()
+    mskv_clean[mskl == 0] = 0
     
     # Distance transforms
-    edtj = distance_transform_edt(mskj == 0)
-    edtm = distance_transform_edt(mskm == 0)
-    edta = distance_transform_edt(mska == 0)
+    edtj = cv2.distanceTransform((mskj == 0).astype("uint8"), cv2.DIST_L2, 5)
+    edtm = cv2.distanceTransform((mskm == 0).astype("uint8"), cv2.DIST_L2, 5)
+    edta = cv2.distanceTransform((mska == 0).astype("uint8"), cv2.DIST_L2, 5)
     
     # Clear "no junctions" cells
     for props in regionprops(label(mskl), intensity_image=msk3):
@@ -320,7 +326,7 @@ def get_vesicle_results(prp, mskv, mskj, mskl, view, dataset="", pix_ref=27.2):
             edtj[tuple(coords.T)] = np.nan
     
     # Measure vesicles
-    for props in regionprops(label(mskv)):
+    for props in regionprops(label(mskv_clean)):
         coords = props.coords
         idx_v = props.label
         idx_c = np.max(mskl[tuple(coords.T)])
@@ -341,28 +347,32 @@ def get_vesicle_results(prp, mskv, mskj, mskl, view, dataset="", pix_ref=27.2):
 
     return pd.DataFrame(df_v)
 
-def get_cell_results(prp, mskl, df_resv, view, dataset="", pix_ref=27.2):
+def get_cell_results(
+        prp, mskl, df_v, view, dist_thresh, dataset="", pix_ref=27.2):
     
     df_c = {
         
-        "dataset"      : [],
-        "view"         : [],
-        "idx_c"        : [],
-        "area_c"       : [],
-        "numb_v"       : [],
-        "dens_v"       : [],
-        "area_v_avg"   : [],
-        "ints_v_avg"   : [],
-        "dist_v_j_avg" : [],
-        "dist_v_m_avg" : [],
-        "dist_v_a_avg" : [],
+        "dataset"        : [],
+        "view"           : [],
+        "idx_c"          : [],
+        "area_c"         : [],
+        "numb_v"         : [],
+        "dens_v"         : [],
+        "area_v_avg"     : [],
+        "ints_v_avg"     : [],
+        "dist_v_j_avg"   : [],
+        "dist_v_m_avg"   : [],
+        "dist_v_a_avg"   : [],
+        "dist_v_j_ratio" : [],
+        "dist_v_m_ratio" : [],
+        "dist_v_a_ratio" : [],
         
         }
     
     # Measure cells
     for props in regionprops(label(mskl)):
         idx_c = props.label
-        df = df_resv[df_resv["idx_c"] == idx_c]
+        df = df_v[df_v["idx_c"] == idx_c]
         area_c = props.area * ((pix_ref * 1e-3) ** 2)
         numb_v = len(df)
         dens_v = numb_v / area_c
@@ -371,17 +381,23 @@ def get_cell_results(prp, mskl, df_resv, view, dataset="", pix_ref=27.2):
         dist_v_j_avg = df["dist_v_j"].mean()
         dist_v_m_avg = df["dist_v_m"].mean()
         dist_v_a_avg = df["dist_v_a"].mean()
-        df_c["dataset"     ].append(dataset)
-        df_c["view"        ].append(view)
-        df_c["idx_c"       ].append(idx_c)
-        df_c["area_c"      ].append(area_c)
-        df_c["numb_v"      ].append(numb_v)
-        df_c["dens_v"      ].append(dens_v)
-        df_c["area_v_avg"  ].append(area_v_avg)
-        df_c["ints_v_avg"  ].append(ints_v_avg)
-        df_c["dist_v_j_avg"].append(dist_v_j_avg)
-        df_c["dist_v_m_avg"].append(dist_v_m_avg) 
-        df_c["dist_v_a_avg"].append(dist_v_a_avg) 
+        dist_v_j_ratio = (df["dist_v_j"] < dist_thresh).mean()
+        dist_v_m_ratio = (df["dist_v_m"] < dist_thresh).mean()
+        dist_v_a_ratio = (df["dist_v_a"] < dist_thresh).mean()
+        df_c["dataset"       ].append(dataset)
+        df_c["view"          ].append(view)
+        df_c["idx_c"         ].append(idx_c)
+        df_c["area_c"        ].append(area_c)
+        df_c["numb_v"        ].append(numb_v)
+        df_c["dens_v"        ].append(dens_v)
+        df_c["area_v_avg"    ].append(area_v_avg)
+        df_c["ints_v_avg"    ].append(ints_v_avg)
+        df_c["dist_v_j_avg"  ].append(dist_v_j_avg)
+        df_c["dist_v_m_avg"  ].append(dist_v_m_avg) 
+        df_c["dist_v_a_avg"  ].append(dist_v_a_avg) 
+        df_c["dist_v_j_ratio"].append(dist_v_j_ratio)
+        df_c["dist_v_m_ratio"].append(dist_v_m_ratio) 
+        df_c["dist_v_a_ratio"].append(dist_v_a_ratio)
     
     return pd.DataFrame(df_c)
 
@@ -407,23 +423,23 @@ def condition_avg_df(df_all, conditions):
 def plot_results(
         df_all_v, df_all_c,
         df_cnd_avg_v, df_cnd_avg_c,
-        conditions, conds_color,
+        conditions, conds_color, dist_thresh,
         ):
     
     tags = [
         "area_c", "numb_v", "dens_v",
         "area_v_avg", "ints_v_avg", 
         "dist_v_j_avg", "dist_v_m_avg", "dist_v_a_avg",
-        "dist_v_j", "dist_v_m", "dist_v_a",
+        "dist_v_j_ratio", "dist_v_m_ratio", "dist_v_a_ratio", 
         ]
     
     titles = [
-        "cell area", "vesicle number", "vesicle density",
-        "vesicle area", "vesicle intensity", 
-        "vesicle dist. j", "vesicle dist. m", "vesicle dist. a",
-        "vesicle dist. j distribution",
-        "vesicle dist. m distribution",
-        "vesicle dist. a distribution",
+        "cell area", "ves. num.", "ves. dens.",
+        "ves. area", "ves. int.", 
+        "ves. dist. j", "ves. dist. m", "ves. dist. a",
+        f"ves. dist. j\n<{dist_thresh}µm",
+        f"ves. dist. m\n<{dist_thresh}µm",
+        f"ves. dist. a\n<{dist_thresh}µm",
         ]
     
     labels = [
@@ -431,10 +447,11 @@ def plot_results(
         "area (µm²)", "intensity (A.U.)", 
         "distance (µm)", "distance (µm)", "distance (µm)",
         "count", "count", "count",
+        "rel. count", "rel. count", "rel. count",
         ]
     
     # Initialize plot
-    fig = plt.figure(figsize=(6, 12))  
+    fig = plt.figure(figsize=(6, 8))  
     fig.suptitle(
         (
         f"n cells = {len(df_all_c)}\n"
@@ -443,7 +460,7 @@ def plot_results(
         fontsize=12, x=0.03, ha="left"
         )
     
-    gs = fig.add_gridspec(6, 3)
+    gs = fig.add_gridspec(4, 3)
     axes = [
         fig.add_subplot(gs[0, 0]),
         fig.add_subplot(gs[0, 1]),
@@ -453,52 +470,31 @@ def plot_results(
         fig.add_subplot(gs[2, 0]),
         fig.add_subplot(gs[2, 1]),
         fig.add_subplot(gs[2, 2]),
-        fig.add_subplot(gs[3, :]),
-        fig.add_subplot(gs[4, :]),
-        fig.add_subplot(gs[5, :]),
+        fig.add_subplot(gs[3, 0]),
+        fig.add_subplot(gs[3, 1]),
+        fig.add_subplot(gs[3, 2]),
         ]
     
     for t, (ax, tag) in enumerate(zip(axes, tags)):
         for c, cnd in enumerate(conditions):    
             
-            if t < 8:
-
-                # Data
-                avg, sem = (
-                    df_cnd_avg_c.loc[f"{cnd}_avg", tag],
-                    df_cnd_avg_c.loc[f"{cnd}_sem", tag],
-                    )
-                
-                # Bar plot
-                ax.bar(
-                    c, avg, yerr=sem, capsize=5, alpha=1, width=0.8,
-                    color=fcolors[f"{conds_color[c]}_40"],
-                    )
-                
-                # Formatting
-                ax.set_xticks(np.arange(len(conditions)))
-                ax.set_xticklabels(conditions, rotation=0)
-                ax.set_ylabel(labels[t])
-                ax.set_title(titles[t])
-                
-            else:
-                
-                # Data
-                val = df_all_v[df_all_v["dataset"].str.contains(
-                    cnd, case=False, na=False)][tag]
-                
-                # Hist. plot
-                ax.hist(
-                    val, label=cnd, bins=300, density=True, alpha=0.5, 
-                    color=fcolors[f"{conds_color[c]}_40"]
-                    )
-                
-                # Formatting
-                ax.set_xlim(-0.2, 10.2)
-                ax.set_xlabel("distance (µm)")
-                ax.set_ylabel(labels[t])
-                ax.set_title(titles[t])
-                ax.legend(loc="upper right")
+            # Data
+            avg, sem = (
+                df_cnd_avg_c.loc[f"{cnd}_avg", tag],
+                df_cnd_avg_c.loc[f"{cnd}_sem", tag],
+                )
+            
+            # Bar plot
+            ax.bar(
+                c, avg, yerr=sem, capsize=5, alpha=1, width=0.8,
+                color=fcolors[f"{conds_color[c]}_40"],
+                )
+            
+            # Formatting
+            ax.set_xticks(np.arange(len(conditions)))
+            ax.set_xticklabels(conditions, rotation=0)
+            ax.set_ylabel(labels[t])
+            ax.set_title(titles[t])
     
     plt.tight_layout() 
     
@@ -506,7 +502,7 @@ def plot_results(
 
 def plot_distributions(
         df_all_v, df_all_c,
-        conditions, conds_color,
+        conditions, conds_color, dist_thresh,
         ):
     
     tags = [
@@ -528,6 +524,18 @@ def plot_distributions(
         "distance (µm²)", "distance (µm²)", "distance (µm²)",
         ]
     
+    bin_nums = [
+        100, 100, 100,
+        100, 100, 
+        3000, 1500, 1000,
+        ]
+    
+    bin_pcs = [
+        99, 99, 99,
+        99, 99, 
+        50, 50, 50,
+        ]
+    
     # Initialize plot
     fig = plt.figure(figsize=(6, 12))  
     fig.suptitle(
@@ -538,53 +546,49 @@ def plot_distributions(
         fontsize=12, x=0.03, ha="left"
         )
     
-    gs = fig.add_gridspec(6, 3)
+    gs = fig.add_gridspec(5, 3)
     axes = [
         fig.add_subplot(gs[0, 0]),
         fig.add_subplot(gs[0, 1]),
         fig.add_subplot(gs[0, 2]),
         fig.add_subplot(gs[1, 0]),
         fig.add_subplot(gs[1, 1]),
-        fig.add_subplot(gs[2, 0]),
-        fig.add_subplot(gs[2, 1]),
-        fig.add_subplot(gs[2, 2]),
+        fig.add_subplot(gs[2, :]),
+        fig.add_subplot(gs[3, :]),
+        fig.add_subplot(gs[4, :]),
         ]
     
+    # Parameters
+
     for t, (ax, tag) in enumerate(zip(axes, tags)):
         for c, cnd in enumerate(conditions):  
+
+            df = df_all_c if t < 5 else df_all_v
+                
+            # Data
+            val_all = df[tag]
+            bin_max = np.nanmax(val_all)
+            bins = np.linspace(0, bin_max, bin_nums[t] + 1)
+            val = df[df["dataset"].str.contains(
+                cnd, case=False, na=False)][tag]
+            counts, _ = np.histogram(val, bins=bins)
+            counts = counts.astype(float) / np.nansum(counts)
             
-            if t < 5:
-                
-                # Data
-                val = df_all_c[df_all_c["dataset"].str.contains(
-                    cnd, case=False, na=False)][tag]
-                weights = np.ones_like(val) / len(val)
-                
-                # Hist. plot
-                ax.hist(
-                    val, label=cnd, bins=30, weights=weights, alpha=0.5, 
-                    color=fcolors[f"{conds_color[c]}_40"]
-                    )
-                
-            else:
-                
-                # Data
-                val = df_all_v[df_all_v["dataset"].str.contains(
-                    cnd, case=False, na=False)][tag]
-                weights = np.ones_like(val) / len(val)
-                
-                # Hist. plot
-                ax.hist(
-                    val, label=cnd, bins=300, weights=weights, alpha=0.5, 
-                    color=fcolors[f"{conds_color[c]}_40"]
-                    )
+            # Bar plot
+            ax.bar(
+                bins[1:], counts, width=bin_max / bin_nums[t], alpha=0.75, 
+                color=fcolors[f"{conds_color[c]}_40"], label=cnd,
+                )
             
             # Formatting
-            # ax.set_xlim(-0.2, 10.2)
+            if "dist" in tag:
+                ax.set_xlim(0, dist_thresh * 3)
+                ax.legend(loc="upper right")
+            else:
+                ax.set_xlim(0, np.nanpercentile(val_all, bin_pcs[t]))
             ax.set_xlabel(labels[t])
             ax.set_ylabel("count")
             ax.set_title(titles[t])
-            # ax.legend(loc="upper right")
 
     plt.tight_layout() 
 
