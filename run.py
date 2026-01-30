@@ -23,17 +23,17 @@ procedure = {
 parameters = {
     
     "dataset" : 
-        # "gigyf12_dko_1.7nm",
+        "gigyf12_dko_1.7nm",
         # "gigyf12_dko_3.25nm_00",
         # "gigyf12_dko_3.25nm_01",
         # "ins1e_wt_1.7nm",
         # "ins1e_wt_3.25nm_00",
-        "ins1e_wt_3.25nm_01",
+        # "ins1e_wt_3.25nm_01",
     
     # Paths
     "root_path" : 
-        # Path(r"\\scopem-idadata.ethz.ch\BDehapiot\remote_Mayrhofer\data"),
-        Path("D:\local_Mayrhofer\data"),
+        # Path(r"\\scopem-idadata.ethz.ch\BDehapiot\remote_Mayrhofer\data_local"),
+        Path("D:\local_Mayrhofer\data_local"),
 
     # Rescale
     "parallel"     : False,

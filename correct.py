@@ -114,6 +114,7 @@ class Correct:
                 setattr(self, key, val)
                 
         # Paths
+        self.data_path = self.root_path / self.dataset
         self.out_path = self.data_path / "out"
         if not self.out_path.exists():
             self.out_path.mkdir(parents=True, exist_ok=True)
@@ -366,10 +367,17 @@ class Correct:
         self.mskj = skeletonize_junctions(self.mskj, 10) * label_config["mskj"]                                 
         self.mskj[self.mskc == 0] = 0
         self.mskl[self.mskj != 0] = 0
-        self.mskl = label(self.mskl > 0, connectivity=1).astype("uint8")
+        
+        # self.mskl = label(self.mskl > 0, connectivity=1).astype("uint8")
+        # self.mskl = remove_small_objects(
+        #     self.mskl, min_size=self.parameters["mask_params"]["cells"][1])
+        # self.mskl = relabel_sequential(self.mskl)[0]
+        
         self.mskl = remove_small_objects(
-            self.mskl, min_size=self.parameters["mask_params"]["cells"][1])
-        self.mskl = relabel_sequential(self.mskl)[0]
+            self.mskl, min_size=self.parameters["mask_params"]["cells"][1],
+            connectivity=1
+            )
+        self.mskl = label(self.mskl > 0, connectivity=1).astype("uint8")
         
         # Discard cells
         for props in regionprops(self.mskl):
